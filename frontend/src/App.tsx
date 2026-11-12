@@ -1,0 +1,75 @@
+import { Link, Navigate, NavLink, Route, Routes, useParams } from 'react-router-dom';
+import MarketPage from './MarketPage';
+import { STOCK_BY_CODE } from './data';
+import { useTheme } from './hooks';
+
+const MENU: [string, string][] = [
+  ['market', '시장'],
+  ['stock', '종목'],
+  ['order', '주문'],
+  ['account', '계좌'],
+  ['rules', '규칙'],
+  ['log', '기록'],
+  ['settings', '설정'],
+];
+
+export default function App() {
+  const [theme, setTheme] = useTheme();
+  return (
+    <div className="app">
+      <header className="top">
+        <Link to="/market" className="brand">
+          GaemiRanger
+        </Link>
+        <nav aria-label="주 메뉴" className="nav">
+          {MENU.map(([id, label]) => (
+            <NavLink key={id} to={`/${id}`}>
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+        <span className="grow" />
+        <span className="badge">모의</span>
+        <button type="button" className="btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+          {theme === 'dark' ? '화이트 모드' : '블랙 모드'}
+        </button>
+      </header>
+      <main className="main">
+        <Routes>
+          <Route path="/" element={<Navigate to="/market" replace />} />
+          <Route path="/market" element={<MarketPage theme={theme} />} />
+          <Route path="/stock/:code" element={<StockSoon />} />
+          <Route path="/:menu" element={<MenuSoon />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+function StockSoon() {
+  const { code = '' } = useParams();
+  const s = STOCK_BY_CODE.get(code);
+  return (
+    <div className="soon">
+      <h1>{s ? `${s.name} (${code})` : code}</h1>
+      <p>종목 페이지는 다음 차례로 정의하고 만듭니다.</p>
+      <Link to="/market" className="btn">
+        시장으로
+      </Link>
+    </div>
+  );
+}
+
+function MenuSoon() {
+  const { menu = '' } = useParams();
+  const label = MENU.find(([id]) => id === menu)?.[1] ?? menu;
+  return (
+    <div className="soon">
+      <h1>{label}</h1>
+      <p>아직 정의하지 않은 페이지입니다. 시장 → 종목 순서로 하나씩 정의하고 만듭니다.</p>
+      <Link to="/market" className="btn">
+        시장으로
+      </Link>
+    </div>
+  );
+}
