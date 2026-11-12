@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CASH, HOLDINGS, STOCK_BY_CODE } from './data';
-import Heatmap, { Legend, type Tile } from './Heatmap';
+import City, { Legend, type Tile } from './City';
 import GroupPanel from './GroupPanel';
 import { useGroups, useMarket } from './hooks';
 import { arrow, changeText, fmt, fmt2, kstTime, signed, signPct, tone, type Theme } from './lib';
@@ -34,7 +34,8 @@ export default function MarketPage({ theme }: { theme: Theme }) {
     });
     const stockValue = rows.reduce((a, r) => a + r.amt, 0);
     const cost = rows.reduce((a, r) => a + r.qty * r.avg, 0);
-    return { rows, stockValue, total: stockValue + CASH, pnl: stockValue - cost, pnlPct: cost ? ((stockValue - cost) / cost) * 100 : 0 };
+    const maxAmt = Math.max(1, ...rows.map((r) => r.amt));
+    return { rows, maxAmt, stockValue, total: stockValue + CASH, pnl: stockValue - cost, pnlPct: cost ? ((stockValue - cost) / cost) * 100 : 0 };
   }, [byCode]);
 
   const marketTiles: Tile[] = useMemo(
@@ -47,6 +48,7 @@ export default function MarketPage({ theme }: { theme: Theme }) {
           group: s.sector,
           size: (s.cap * s.price) / s.prev,
           pct: r,
+          height: h ? h.amt / port.maxAmt : 0, // 높이 = 내가 가진 금액
           name: s.name,
           extra: `${fmt(s.price)}원`,
           tip: [
@@ -56,7 +58,7 @@ export default function MarketPage({ theme }: { theme: Theme }) {
             ['등락률', changeText(r)],
             ['시가총액', `${((s.cap * s.price) / s.prev).toFixed(1)}조원`],
             ['업종', s.sector],
-            ...(h ? ([['내 수익률', changeText(h.profit)]] as [string, string][]) : []),
+            ...(h ? ([['내 보유', `${fmt(h.amt)}원`], ['내 수익률', changeText(h.profit)]] as [string, string][]) : []),
           ],
         };
       }),
@@ -73,6 +75,7 @@ export default function MarketPage({ theme }: { theme: Theme }) {
           group: g?.name ?? r.s.sector,
           size: r.amt,
           pct: colorBy === 'profit' ? r.profit : r.today,
+          height: r.amt / port.maxAmt,
           name: r.s.name,
           extra: `비중 ${w.toFixed(1)}%`,
           tip: [
@@ -146,7 +149,7 @@ export default function MarketPage({ theme }: { theme: Theme }) {
         )}
         <span className="grow" />
         <span className="hint">
-          {view === 'market' ? '코스피 시가총액 상위 50 · 크기 = 시가총액 · 색 = 오늘 등락률' : `보유 ${port.rows.length}종목 · 크기 = 내 비중 · 색 = ${colorBy === 'profit' ? '내 수익률' : '오늘 등락률'}`}
+          {view === 'market' ? '코스피 시가총액 상위 50 · 바닥 = 시가총액 · 높이 = 내가 가진 금액 · 지붕 색 = 오늘 등락률' : `보유 ${port.rows.length}종목 · 바닥·높이 = 내 비중 · 지붕 색 = ${colorBy === 'profit' ? '내 수익률' : '오늘 등락률'}`}
         </span>
       </div>
 
@@ -154,7 +157,7 @@ export default function MarketPage({ theme }: { theme: Theme }) {
         {view === 'portfolio' && port.rows.length === 0 ? (
           <div className="empty">보유 종목이 없습니다.</div>
         ) : (
-          <Heatmap
+          <City
             tiles={view === 'market' ? marketTiles : portTiles}
             theme={theme}
             label={view === 'market' ? '시장 히트맵' : '내 포트폴리오 히트맵'}
@@ -165,7 +168,7 @@ export default function MarketPage({ theme }: { theme: Theme }) {
           <GroupPanel g={groups} holdings={port.rows.map((r) => ({ code: r.code, name: r.s.name }))} onClose={() => setEditing(false)} />
         )}
       </div>
-      <Legend theme={theme} />
+      <Legend theme={theme} height={view === 'market' ? '내가 가진 금액 (안 가진 종목은 낮게)' : '내 비중'} />
     </div>
   );
 }
