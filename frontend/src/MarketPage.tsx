@@ -1,21 +1,49 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ANT_T, HeroAnt } from './Ants';
 import { CASH, HOLDINGS, STOCK_BY_CODE } from './data';
-import City, { Legend, type Tile } from './City';
 import GroupPanel from './GroupPanel';
+import Heatmap, { Legend, type Tile } from './Heatmap';
 import { useGroups, useMarket } from './hooks';
-import { arrow, changeText, fmt, fmt2, kstTime, signed, signPct, tone, type Theme } from './lib';
+import { arrow, changeText, fmt, fmt2, kstTime, signed, signPct, tone, type Palette } from './lib';
 
 // 보유 종목의 원래 업종 (그룹 기본값). 바뀌지 않으므로 한 번만 만든다.
 const HELD = HOLDINGS.map((h) => ({ code: h.code, sector: STOCK_BY_CODE.get(h.code)!.sector }));
 
-export default function MarketPage({ theme }: { theme: Theme }) {
+type View = 'market' | 'portfolio';
+type Opt = [string, string][];
+// TradingView 처럼 위쪽에서 고른다. 첫 값이 기본값이고, 기본값은 주소에 남기지 않는다.
+const OPTS: Record<View, { size: Opt; color: Opt; group: Opt }> = {
+  market: {
+    size: [['cap', '시가총액'], ['equal', '같은 크기']],
+    color: [['today', '오늘 등락률']],
+    group: [['sector', '업종'], ['none', '묶지 않음']],
+  },
+  portfolio: {
+    size: [['hold', '내 보유 금액'], ['cap', '시가총액'], ['equal', '같은 크기']],
+    color: [['profit', '내 수익률'], ['today', '오늘 등락률']],
+    group: [['mine', '내 그룹'], ['sector', '업종'], ['none', '묶지 않음']],
+  },
+};
+
+export default function MarketPage({ palette, ants, setAnts }: { palette: Palette; ants: boolean; setAnts: (v: boolean) => void }) {
   const [sp, setSp] = useSearchParams();
-  const view = sp.get('view') === 'portfolio' ? 'portfolio' : 'market';
-  const colorBy = sp.get('color') === 'today' ? 'today' : 'profit';
-  const setParam = (k: string, v: string | null) => {
+  const view: View = sp.get('view') === 'portfolio' ? 'portfolio' : 'market';
+  const o = OPTS[view];
+  const pick = (k: 'size' | 'color' | 'group') => {
+    const v = sp.get(k);
+    return o[k].some(([x]) => x === v) ? v! : o[k][0][0];
+  };
+  const size = pick('size');
+  const colorBy = pick('color');
+  const groupBy = pick('group');
+  const setParam = (k: string, v: string) => {
     const next = new URLSearchParams(sp);
-    if (v === null) next.delete(k);
+    if (k === 'view') {
+      ['size', 'color', 'group'].forEach((x) => next.delete(x));
+      if (v === 'market') next.delete('view');
+      else next.set('view', v);
+    } else if (v === o[k as 'size'][0][0]) next.delete(k);
     else next.set(k, v);
     setSp(next, { replace: true });
   };
@@ -34,23 +62,21 @@ export default function MarketPage({ theme }: { theme: Theme }) {
     });
     const stockValue = rows.reduce((a, r) => a + r.amt, 0);
     const cost = rows.reduce((a, r) => a + r.qty * r.avg, 0);
-    const maxAmt = Math.max(1, ...rows.map((r) => r.amt));
-    return { rows, maxAmt, stockValue, total: stockValue + CASH, pnl: stockValue - cost, pnlPct: cost ? ((stockValue - cost) / cost) * 100 : 0 };
+    return { rows, stockValue, total: stockValue + CASH, pnl: stockValue - cost, pnlPct: cost ? ((stockValue - cost) / cost) * 100 : 0 };
   }, [byCode]);
 
-  const marketTiles: Tile[] = useMemo(
-    () =>
-      stocks.map((s) => {
+  const tiles: Tile[] = useMemo(() => {
+    if (view === 'market')
+      return stocks.map((s) => {
         const r = ((s.price - s.prev) / s.prev) * 100;
         const h = port.rows.find((x) => x.code === s.code);
         return {
           id: s.code,
-          group: s.sector,
-          size: (s.cap * s.price) / s.prev,
+          group: groupBy === 'none' ? '' : s.sector,
+          size: size === 'equal' ? 1 : (s.cap * s.price) / s.prev,
           pct: r,
-          height: h ? h.amt / port.maxAmt : 0, // 높이 = 내가 가진 금액
           name: s.name,
-          extra: `${fmt(s.price)}원`,
+          held: !!h,
           tip: [
             ['코드', s.code],
             ['현재가', `${fmt(s.price)}원`],
@@ -61,36 +87,44 @@ export default function MarketPage({ theme }: { theme: Theme }) {
             ...(h ? ([['내 보유', `${fmt(h.amt)}원`], ['내 수익률', changeText(h.profit)]] as [string, string][]) : []),
           ],
         };
-      }),
-    [stocks, port],
-  );
+      });
+    return port.rows.map((r) => {
+      const w = (r.amt / port.stockValue) * 100;
+      const g = groups.groups.find((x) => x.id === groups.assign[r.code]);
+      return {
+        id: r.code,
+        group: groupBy === 'none' ? '' : groupBy === 'mine' ? g?.name ?? r.s.sector : r.s.sector,
+        size: size === 'equal' ? 1 : size === 'cap' ? r.s.cap : r.amt,
+        pct: colorBy === 'profit' ? r.profit : r.today,
+        name: r.s.name,
+        tip: [
+          ['수량', `${fmt(r.qty)}주`],
+          ['평균단가', `${fmt(r.avg)}원`],
+          ['현재가', `${fmt(r.s.price)}원`],
+          ['평가금액', `${fmt(r.amt)}원`],
+          ['평가손익', `${arrow(r.pnl)} ${signed(r.pnl)}원`],
+          ['내 수익률', changeText(r.profit)],
+          ['오늘 등락률', changeText(r.today)],
+          ['비중', `${w.toFixed(1)}%`],
+        ],
+      };
+    });
+  }, [view, stocks, port, groups.groups, groups.assign, size, colorBy, groupBy]);
 
-  const portTiles: Tile[] = useMemo(
-    () =>
-      port.rows.map((r) => {
-        const w = (r.amt / port.stockValue) * 100;
-        const g = groups.groups.find((x) => x.id === groups.assign[r.code]);
-        return {
-          id: r.code,
-          group: g?.name ?? r.s.sector,
-          size: r.amt,
-          pct: colorBy === 'profit' ? r.profit : r.today,
-          height: r.amt / port.maxAmt,
-          name: r.s.name,
-          extra: `비중 ${w.toFixed(1)}%`,
-          tip: [
-            ['수량', `${fmt(r.qty)}주`],
-            ['평균단가', `${fmt(r.avg)}원`],
-            ['현재가', `${fmt(r.s.price)}원`],
-            ['평가금액', `${fmt(r.amt)}원`],
-            ['평가손익', `${signed(r.pnl)}원`],
-            ['내 수익률', changeText(r.profit)],
-            ['오늘 등락률', changeText(r.today)],
-            ['비중', `${w.toFixed(1)}%`],
-          ],
-        };
-      }),
-    [port, groups.groups, groups.assign, colorBy],
+  const nHero = tiles.filter((t) => t.pct >= ANT_T).length;
+  const nSad = tiles.filter((t) => t.pct <= -ANT_T).length;
+
+  const seg = (k: 'view' | 'size' | 'color' | 'group', label: string, list: Opt, cur: string) => (
+    <div className="pk">
+      <span id={`pk-${k}`}>{label}</span>
+      <div className="seg" role="group" aria-labelledby={`pk-${k}`}>
+        {list.map(([v, l]) => (
+          <button key={v} type="button" aria-pressed={cur === v} onClick={() => setParam(k, v)}>
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 
   return (
@@ -124,32 +158,21 @@ export default function MarketPage({ theme }: { theme: Theme }) {
       </section>
 
       <div className="toolbar">
-        <div className="seg" role="group" aria-label="보기">
-          <button type="button" aria-pressed={view === 'market'} onClick={() => setParam('view', null)}>
-            시장
+        {seg('view', '보기', [['market', '코스피 상위 50'], ['portfolio', '내 포트폴리오']], view)}
+        {seg('size', '크기', o.size, size)}
+        {o.color.length > 1 && seg('color', '색', o.color, colorBy)}
+        {seg('group', '묶음', o.group, groupBy)}
+        <button type="button" className="chip" aria-pressed={ants} onClick={() => setAnts(!ants)}>
+          <HeroAnt palette={palette} /> 개미 {ants ? '켬' : '끔'}
+        </button>
+        {view === 'portfolio' && groupBy === 'mine' && (
+          <button type="button" className="chip" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
+            그룹 편집
           </button>
-          <button type="button" aria-pressed={view === 'portfolio'} onClick={() => setParam('view', 'portfolio')}>
-            내 포트폴리오
-          </button>
-        </div>
-        {view === 'portfolio' && (
-          <>
-            <div className="seg" role="group" aria-label="색 기준">
-              <button type="button" aria-pressed={colorBy === 'profit'} onClick={() => setParam('color', null)}>
-                내 수익률
-              </button>
-              <button type="button" aria-pressed={colorBy === 'today'} onClick={() => setParam('color', 'today')}>
-                오늘 등락률
-              </button>
-            </div>
-            <button type="button" className="btn" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
-              그룹 편집
-            </button>
-          </>
         )}
         <span className="grow" />
         <span className="hint">
-          {view === 'market' ? '코스피 시가총액 상위 50 · 바닥 = 시가총액 · 높이 = 내가 가진 금액 · 지붕 색 = 오늘 등락률' : `보유 ${port.rows.length}종목 · 바닥·높이 = 내 비중 · 지붕 색 = ${colorBy === 'profit' ? '내 수익률' : '오늘 등락률'}`}
+          영웅 개미 {nHero} · 눈물 개미 {nSad}
         </span>
       </div>
 
@@ -157,18 +180,19 @@ export default function MarketPage({ theme }: { theme: Theme }) {
         {view === 'portfolio' && port.rows.length === 0 ? (
           <div className="empty">보유 종목이 없습니다.</div>
         ) : (
-          <City
-            tiles={view === 'market' ? marketTiles : portTiles}
-            theme={theme}
+          <Heatmap
+            tiles={tiles}
+            palette={palette}
+            ants={ants}
             label={view === 'market' ? '시장 히트맵' : '내 포트폴리오 히트맵'}
             onPick={(code) => navigate(`/stock/${code}`)}
           />
         )}
-        {view === 'portfolio' && editing && (
+        {view === 'portfolio' && groupBy === 'mine' && editing && (
           <GroupPanel g={groups} holdings={port.rows.map((r) => ({ code: r.code, name: r.s.name }))} onClose={() => setEditing(false)} />
         )}
       </div>
-      <Legend theme={theme} height={view === 'market' ? '내가 가진 금액 (안 가진 종목은 낮게)' : '내 비중'} />
+      <Legend palette={palette} ants={ants} />
     </div>
   );
 }

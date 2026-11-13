@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { INDICES, STOCKS, tickOf, type Index, type Stock } from './data';
-import { marketStatus, type MarketStatus, type Theme } from './lib';
+import { marketStatus, type MarketStatus, type Palette } from './lib';
 
 const REFRESH_MS = 10_000; // P2: 장중 10초마다
 
@@ -30,25 +30,45 @@ function jitterStock(s: Stock): Stock {
   return { ...s, price };
 }
 
-export function useTheme(): [Theme, (t: Theme) => void] {
-  const [theme, setTheme] = useState<Theme>(() => {
+/** 고른 팔레트. 처음에는 시스템이 다크 모드면 밤하늘, 아니면 크림. */
+export function usePalette(): [Palette, (p: Palette) => void] {
+  const [palette, setPalette] = useState<Palette>(() => {
     try {
-      const v = localStorage.getItem('gaemiranger.theme');
-      if (v === 'light' || v === 'dark') return v;
+      const v = localStorage.getItem('gaemiranger.palette');
+      if (v === 'cream' || v === 'white' || v === 'night') return v;
     } catch {
       /* 저장소를 못 쓰면 시스템 설정을 따른다 */
     }
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'night' : 'cream';
   });
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.palette = palette;
     try {
-      localStorage.setItem('gaemiranger.theme', theme);
+      localStorage.setItem('gaemiranger.palette', palette);
     } catch {
       /* 무시 */
     }
-  }, [theme]);
-  return [theme, setTheme];
+  }, [palette]);
+  return [palette, setPalette];
+}
+
+/** 개미 켬/끔. 이 브라우저에 기억한다. */
+export function useAnts(): [boolean, (v: boolean) => void] {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem('gaemiranger.ants') !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('gaemiranger.ants', on ? 'on' : 'off');
+    } catch {
+      /* 무시 */
+    }
+  }, [on]);
+  return [on, setOn];
 }
 
 // ---------- 그룹 (M4): 한 종목은 한 그룹, 기본은 업종 ----------

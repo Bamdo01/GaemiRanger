@@ -1,4 +1,10 @@
-export type Theme = 'light' | 'dark';
+/** 색 팔레트. 모드(화이트/블랙) 대신 팔레트 하나를 고른다. */
+export type Palette = 'cream' | 'white' | 'night';
+export const PALETTES: [Palette, string][] = [
+  ['cream', '크림'],
+  ['white', '화이트'],
+  ['night', '밤하늘'],
+];
 
 export const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
 export const fmt2 = (n: number) => n.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -11,18 +17,19 @@ export const tone = (v: number) => (v > 0 ? 'up' : v < 0 ? 'dn' : 'flat');
 
 // ---------- 히트맵 색: 상승 초록, 하락 빨강, ±3%에서 가장 진함 ----------
 type RGB = [number, number, number];
-const PALETTE: Record<Theme, { base: RGB; up: RGB; dn: RGB }> = {
-  // 초록은 어둡게, 빨강은 밝게 해서 색약이어도 밝기로 구분되게
-  light: { base: [221, 221, 226], up: [18, 120, 58], dn: [238, 80, 80] },
-  dark: { base: [52, 52, 60], up: [38, 190, 100], dn: [176, 30, 38] },
+// 오르면 초록, 내리면 빨강은 모든 팔레트에서 같다. 바탕(0%)과 진하기만 팔레트에 맞춘다.
+const HEAT: Record<Palette, { base: RGB; up: RGB; dn: RGB; dark: string; light: string }> = {
+  cream: { base: [240, 231, 214], up: [44, 160, 86], dn: [226, 80, 66], dark: '#2b1d12', light: '#ffffff' },
+  white: { base: [232, 233, 237], up: [36, 156, 84], dn: [230, 78, 78], dark: '#16171b', light: '#ffffff' },
+  night: { base: [46, 56, 82], up: [44, 172, 100], dn: [214, 76, 82], dark: '#0f1424', light: '#ffffff' },
 };
-export function heatColor(pct: number, theme: Theme): { bg: string; ink: string } {
-  const p = PALETTE[theme];
+export function heatColor(pct: number, palette: Palette): { bg: string; ink: string } {
+  const p = HEAT[palette];
   const t = Math.max(-1, Math.min(1, pct / 3));
   const a = Math.pow(Math.abs(t), 0.75);
   const to = t >= 0 ? p.up : p.dn;
   const c = p.base.map((b, i) => Math.round(b + (to[i] - b) * a)) as RGB;
-  return { bg: `rgb(${c.join(',')})`, ink: luminance(c) > 0.3 ? '#16161a' : '#ffffff' };
+  return { bg: `rgb(${c.join(',')})`, ink: luminance(c) > 0.2 ? p.dark : p.light };
 }
 function luminance(c: RGB) {
   const f = (v: number) => {

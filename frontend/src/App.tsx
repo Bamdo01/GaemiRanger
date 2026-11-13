@@ -1,7 +1,8 @@
 import { Link, Navigate, NavLink, Route, Routes, useParams } from 'react-router-dom';
 import MarketPage from './MarketPage';
 import { STOCK_BY_CODE } from './data';
-import { useTheme } from './hooks';
+import { useAnts, usePalette } from './hooks';
+import { PALETTES } from './lib';
 
 const MENU: [string, string][] = [
   ['market', '시장'],
@@ -14,12 +15,13 @@ const MENU: [string, string][] = [
 ];
 
 export default function App() {
-  const [theme, setTheme] = useTheme();
+  const [palette, setPalette] = usePalette();
+  const [ants, setAnts] = useAnts();
   return (
     <div className="app">
       <header className="top">
         <Link to="/market" className="brand">
-          GaemiRanger
+          개미레인저
         </Link>
         <nav aria-label="주 메뉴" className="nav">
           {MENU.map(([id, label]) => (
@@ -30,14 +32,19 @@ export default function App() {
         </nav>
         <span className="grow" />
         <span className="badge">모의</span>
-        <button type="button" className="btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-          {theme === 'dark' ? '화이트 모드' : '블랙 모드'}
-        </button>
+        <div className="seg" role="group" aria-label="색 팔레트">
+          {PALETTES.map(([id, label]) => (
+            <button key={id} type="button" aria-pressed={palette === id} onClick={() => setPalette(id)}>
+              <i className={`dot dot-${id}`} aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
       </header>
       <main className="main">
         <Routes>
           <Route path="/" element={<Navigate to="/market" replace />} />
-          <Route path="/market" element={<MarketPage theme={theme} />} />
+          <Route path="/market" element={<MarketPage palette={palette} ants={ants} setAnts={setAnts} />} />
           <Route path="/stock/:code" element={<StockSoon />} />
           <Route path="/:menu" element={<MenuSoon />} />
         </Routes>
