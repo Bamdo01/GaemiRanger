@@ -12,6 +12,11 @@ const HELD = HOLDINGS.map((h) => ({ code: h.code, sector: STOCK_BY_CODE.get(h.co
 
 type View = 'market' | 'portfolio';
 type Opt = [string, string][];
+// 보기는 앞으로 늘어날 수 있어서 (코스닥, 관심종목 등) 드롭다운으로 고른다.
+const VIEWS: [View, string][] = [
+  ['market', '코스피 상위 50'],
+  ['portfolio', '내 포트폴리오'],
+];
 // TradingView 처럼 위쪽에서 고른다. 첫 값이 기본값이고, 기본값은 주소에 남기지 않는다.
 const OPTS: Record<View, { size: Opt; color: Opt; group: Opt }> = {
   market: {
@@ -158,7 +163,16 @@ export default function MarketPage({ palette, ants, setAnts }: { palette: Palett
       </section>
 
       <div className="toolbar">
-        {seg('view', '보기', [['market', '코스피 상위 50'], ['portfolio', '내 포트폴리오']], view)}
+        <label className="pk" htmlFor="pk-view-sel">
+          <span>보기</span>
+          <select id="pk-view-sel" className="dd" value={view} onChange={(e) => setParam('view', e.target.value)}>
+            {VIEWS.map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </label>
         {seg('size', '크기', o.size, size)}
         {o.color.length > 1 && seg('color', '색', o.color, colorBy)}
         {seg('group', '묶음', o.group, groupBy)}
