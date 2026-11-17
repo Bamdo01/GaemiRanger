@@ -74,7 +74,7 @@ function Magazine({ port, palette, ants }: { port: Portfolio; palette: Palette; 
   return (
     <article className="mag">
       <header className="mag-head">
-        <p className="kicker">내 자산 · {date} 호</p>
+        <p className="kicker">총자산 · {date} 기준</p>
         <h1 className="mag-total">
           {fmt(port.total)}
           <small>원</small>
@@ -103,7 +103,7 @@ function Magazine({ port, palette, ants }: { port: Portfolio; palette: Palette; 
         <Story kind="sad" row={worst} palette={palette} ants={ants} onPick={(c) => navigate(`/stock/${c}`)} />
 
         <section className="card weight" aria-labelledby="h-weight">
-          <h2 id="h-weight">돈은 어디에 있나</h2>
+          <h2 id="h-weight">자산 비중</h2>
           <div className="wbar" role="img" aria-label={slices.map((s) => `${s.name} ${((s.amt / port.total) * 100).toFixed(1)}%`).join(', ')}>
             {slices.map((s) => (
               <i key={s.id} style={{ flexGrow: s.amt, background: s.color }} />
@@ -122,7 +122,7 @@ function Magazine({ port, palette, ants }: { port: Portfolio; palette: Palette; 
         </section>
 
         <section className="card contrib" aria-labelledby="h-contrib">
-          <h2 id="h-contrib">어디서 벌고 잃었나</h2>
+          <h2 id="h-contrib">종목별 평가손익</h2>
           <p className="sub">평균단가 대비 평가손익</p>
           <ul className="clist">
             {contrib.map((r) => (
@@ -143,7 +143,7 @@ function Magazine({ port, palette, ants }: { port: Portfolio; palette: Palette; 
 
         <section className="card mini" aria-labelledby="h-mini">
           <div className="card-head">
-            <h2 id="h-mini">한눈에</h2>
+            <h2 id="h-mini">보유 종목 히트맵</h2>
             <Link to="/assets?view=heatmap" className="chip">
               히트맵으로 크게
             </Link>
@@ -158,7 +158,7 @@ function Magazine({ port, palette, ants }: { port: Portfolio; palette: Palette; 
 }
 
 function Story({ kind, row, palette, ants, onPick }: { kind: 'hero' | 'sad'; row: Row | null; palette: Palette; ants: boolean; onPick: (c: string) => void }) {
-  const title = kind === 'hero' ? '오늘의 영웅' : '오늘의 눈물';
+  const title = kind === 'hero' ? '오늘 가장 많이 번 종목' : '오늘 가장 많이 잃은 종목';
   return (
     <section className={`card story ${kind}`} aria-label={title}>
       <p className="kicker">{title}</p>
