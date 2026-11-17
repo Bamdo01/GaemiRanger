@@ -1,4 +1,5 @@
 import { Link, Navigate, NavLink, Route, Routes, useParams } from 'react-router-dom';
+import AssetsPage from './AssetsPage';
 import MarketPage from './MarketPage';
 import { STOCK_BY_CODE } from './data';
 import { useAnts, usePalette } from './hooks';
@@ -8,7 +9,7 @@ const MENU: [string, string][] = [
   ['market', '시장'],
   ['stock', '종목'],
   ['order', '주문'],
-  ['account', '계좌'],
+  ['assets', '내 자산'],
   ['rules', '규칙'],
   ['log', '기록'],
   ['settings', '설정'],
@@ -45,6 +46,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/market" replace />} />
           <Route path="/market" element={<MarketPage palette={palette} ants={ants} setAnts={setAnts} />} />
+          <Route path="/assets" element={<AssetsPage palette={palette} ants={ants} setAnts={setAnts} />} />
+          <Route path="/account" element={<Navigate to="/assets" replace />} />
           <Route path="/stock/:code" element={<StockSoon />} />
           <Route path="/:menu" element={<MenuSoon />} />
         </Routes>

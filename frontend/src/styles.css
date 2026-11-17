@@ -14,6 +14,7 @@
   --accent-ink: #2b1d12;
   --up: #13793d;
   --dn: #c2312a;
+  --cash: #cdbb9d;
   color-scheme: light;
 }
 :root[data-palette='white'] {
@@ -30,6 +31,7 @@
   --accent-ink: #ffffff;
   --up: #12783a;
   --dn: #d42c2c;
+  --cash: #c9ccd4;
   color-scheme: light;
 }
 :root[data-palette='night'] {
@@ -46,6 +48,7 @@
   --accent-ink: #0f1424;
   --up: #5be08f;
   --dn: #ff7a82;
+  --cash: #4a5576;
   color-scheme: dark;
 }
 
@@ -155,6 +158,79 @@ a { color: inherit; }
 .lg-step { min-width: 46px; padding: 3px 6px; border-radius: 8px; text-align: center; font-weight: 700; font-size: 11.5px; }
 .lg-ant { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; }
 .lg-ant svg { width: 24px; height: 24px; }
+
+/* 내 자산 */
+.assets { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; overflow: auto; }
+.assets .stage { min-height: 460px; }
+
+/* 매거진 */
+.mag { display: flex; flex-direction: column; gap: 14px; }
+.kicker { margin: 0; font-size: 12.5px; font-weight: 800; letter-spacing: 0.04em; color: var(--sec); }
+.mag-head { padding: 18px 22px 16px; border-radius: 18px; background: var(--panel); box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.06); }
+.mag-total { margin: 4px 0 6px; font-family: Jua, Pretendard, sans-serif; font-weight: 400; font-size: clamp(36px, 6vw, 64px); line-height: 1; letter-spacing: -0.01em; }
+.mag-total small { font-size: 0.45em; margin-left: 4px; color: var(--sec); }
+.deck { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 14px; color: var(--sec); }
+.deck b { color: var(--ink); }
+.deck b.up { color: var(--up); }
+.deck b.dn { color: var(--dn); }
+.mag-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.card { position: relative; padding: 16px 18px; border-radius: 18px; background: var(--panel); box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.06); min-width: 0; }
+.card h2 { margin: 0 0 10px; font-family: Jua, Pretendard, sans-serif; font-weight: 400; font-size: 20px; }
+.card .sub { margin: 0; font-size: 12.5px; color: var(--sec); }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.card-head h2 { margin: 0; }
+.card-head .chip { text-decoration: none; height: 32px; }
+.story { min-height: 170px; overflow: hidden; padding-right: 120px; }
+.story.hero { background: color-mix(in srgb, var(--panel) 86%, var(--up)); }
+.story.sad { background: color-mix(in srgb, var(--panel) 86%, var(--dn)); }
+.story-name { display: block; margin: 8px 0 2px; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; font-family: Jua, Pretendard, sans-serif; font-size: 30px; line-height: 1.1; }
+.story-name:hover { text-decoration: underline; }
+.story-num { margin: 0 0 6px; font-size: 22px; font-weight: 800; }
+.story-ant { position: absolute; right: 14px; bottom: 10px; width: 104px; height: 104px; }
+.story-ant svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.weight { grid-row: span 2; }
+.wbar { display: flex; height: 26px; border-radius: 9px; overflow: hidden; gap: 2px; margin-bottom: 12px; }
+.wbar i { display: block; min-width: 3px; }
+.wlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.wlist li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.wlist li i { width: 12px; height: 12px; border-radius: 4px; flex: none; }
+.wname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wamt { width: 108px; text-align: right; color: var(--sec); font-size: 12.5px; }
+.contrib { grid-column: span 2; }
+.clist { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.clist li { display: grid; grid-template-columns: 120px 1fr 130px; align-items: center; gap: 10px; font-size: 13.5px; }
+.clist li b { text-align: right; }
+.cname { padding: 0; border: 0; background: none; cursor: pointer; text-align: left; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cname:hover { text-decoration: underline; }
+.cbar { position: relative; height: 18px; border-radius: 6px; background: var(--seg); }
+.cbar::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: var(--sec); opacity: 0.5; }
+.cbar i { position: absolute; top: 0; bottom: 0; border-radius: 6px; }
+.cbar i.pos { left: 50%; background: var(--up); }
+.cbar i.neg { right: 50%; background: var(--dn); }
+.mini { grid-column: 1 / -1; }
+.mini-map { height: 300px; display: flex; }
+
+/* 표 */
+.tbl-wrap { overflow-x: auto; padding: 6px; border-radius: 18px; background: var(--panel); }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tbl th, .tbl td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.tbl th { padding: 0; }
+.tbl th button { width: 100%; padding: 10px 12px; border: 0; background: none; cursor: pointer; text-align: inherit; font-size: 12.5px; font-weight: 800; color: var(--sec); }
+.tbl th[aria-sort='ascending'] button, .tbl th[aria-sort='descending'] button { color: var(--ink); }
+.tbl .num { text-align: right; }
+.tbl tbody tr:hover { background: var(--seg); }
+.tname { padding: 0; border: 0; background: none; cursor: pointer; font-weight: 800; }
+.tname small { margin-left: 4px; color: var(--sec); font-weight: 500; }
+.tname:hover { text-decoration: underline; }
+.tbl tfoot td { color: var(--sec); }
+.tbl tfoot .total td { color: var(--ink); font-weight: 800; border-bottom: 0; }
+.tbl-wrap .note { margin: 8px 12px 6px; }
+
+@media (max-width: 1000px) {
+  .mag-grid { grid-template-columns: minmax(0, 1fr); }
+  .weight, .contrib, .mini { grid-row: auto; grid-column: auto; }
+  .clist li { grid-template-columns: 90px 1fr 110px; }
+}
 
 /* 그룹 편집 패널 */
 .panel { width: 340px; flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); overflow: auto; }
