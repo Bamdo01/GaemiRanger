@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import AiReview from './AiReview';
 import { HeroAnt, SadAnt } from './Ants';
 import GroupPanel from './GroupPanel';
 import Heatmap, { Legend, type Tile } from './Heatmap';
@@ -31,7 +32,9 @@ export default function AssetsPage({ palette, ants, setAnts }: Props) {
     setSp(next, { replace: true });
   };
 
-  const { status, stocks, at } = useMarket();
+  const { status, stocks, indices, at } = useMarket();
+  const k = indices.find((i) => i.id === 'kospi');
+  const kospiPct = k ? ((k.value - k.prev) / k.prev) * 100 : 0;
   const port = usePortfolio(stocks);
 
   return (
@@ -50,14 +53,14 @@ export default function AssetsPage({ palette, ants, setAnts }: Props) {
       ) : view === 'table' ? (
         <TableView port={port} />
       ) : (
-        <Magazine port={port} palette={palette} ants={ants} />
+        <Magazine port={port} palette={palette} ants={ants} kospiPct={kospiPct} />
       )}
     </div>
   );
 }
 
 /* ---------- 매거진 ---------- */
-function Magazine({ port, palette, ants }: { port: Portfolio; palette: Palette; ants: boolean }) {
+function Magazine({ port, palette, ants, kospiPct }: { port: Portfolio; palette: Palette; ants: boolean; kospiPct: number }) {
   const navigate = useNavigate();
   const byToday = [...port.rows].sort((a, b) => b.todayPnl - a.todayPnl);
   const best = byToday[0].todayPnl > 0 ? byToday[0] : null;
@@ -97,6 +100,8 @@ function Magazine({ port, palette, ants }: { port: Portfolio; palette: Palette; 
           </span>
         </p>
       </header>
+
+      <AiReview port={port} kospiPct={kospiPct} />
 
       <div className="mag-grid">
         <Story kind="hero" row={best} palette={palette} ants={ants} onPick={(c) => navigate(`/stock/${c}`)} />
