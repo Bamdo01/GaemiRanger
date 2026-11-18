@@ -24,16 +24,10 @@ cd backend
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 copy .env.example .env
+notepad .env
 ```
 
-`.env` 를 메모장으로 열어 채운다.
-
-- `KIS_APP_KEY`, `KIS_APP_SECRET`, `KIS_ACCOUNT` (모의투자 계좌, 예 `50123456-01`)
-- 로그인 비밀번호: 아래 명령을 실행하면 나오는 두 줄(`APP_PASSWORD_HASH`, `SESSION_SECRET`)을 붙여 넣는다.
-
-```bash
-.venv\Scripts\python -m app.hashpw
-```
+`backend\.env` 를 메모장으로 열어 `=` 뒤에 네 가지를 쓰고 저장한다: 앱키, 시크릿, 모의투자 계좌번호, 이 사이트 로그인 비밀번호(`APP_PASSWORD`, 8자 이상). 서버가 켜질 때 비밀번호를 해시로 바꿔 메모리에만 둔다.
 
 켜기:
 

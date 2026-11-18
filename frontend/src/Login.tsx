@@ -27,7 +27,7 @@ export default function Login() {
       >
         <span className="brand">개미레인저</span>
         <h1>로그인</h1>
-        {!status.loginReady && <p className="o-warn">서버에 비밀번호가 아직 설정되지 않았습니다. backend/.env 에 APP_PASSWORD_HASH 와 SESSION_SECRET 을 넣고 서버를 다시 켜 주세요.</p>}
+        {!status.loginReady && <p className="o-warn">서버에 비밀번호가 아직 설정되지 않았습니다. backend/.env 의 APP_PASSWORD= 뒤에 비밀번호를 쓰고 서버를 다시 켜 주세요.</p>}
         <label htmlFor="pw">비밀번호</label>
         <input id="pw" type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
         {err && (

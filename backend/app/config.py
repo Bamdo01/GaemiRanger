@@ -24,8 +24,28 @@ _acct = os.getenv("KIS_ACCOUNT", "").strip().replace(" ", "")
 KIS_CANO, _, KIS_ACNT_PRDT_CD = _acct.partition("-")
 KIS_RPS = max(0.5, float(os.getenv("KIS_RPS", "2")))
 
+# 로그인 비밀번호: .env 에 APP_PASSWORD 를 그냥 쓰면 된다. 서버가 켜질 때 해시로 바꿔 메모리에만 둔다.
+# (APP_PASSWORD_HASH 를 쓰면 그쪽이 먼저)
 APP_PASSWORD_HASH = os.getenv("APP_PASSWORD_HASH", "").strip()
+_plain = os.getenv("APP_PASSWORD", "").strip()
+if not APP_PASSWORD_HASH and _plain:
+    if len(_plain) < 8:
+        raise SystemExit(".env 의 APP_PASSWORD 는 8자 이상으로 정해 주세요.")
+    import hashlib as _h, secrets as _s
+
+    _salt = _s.token_bytes(16)
+    APP_PASSWORD_HASH = f"scrypt$16384$8$1${_salt.hex()}${_h.scrypt(_plain.encode(), salt=_salt, n=2**14, r=8, p=1, dklen=32).hex()}"
+del _plain
+
+# 쿠키 서명 값: 안 쓰면 data/session_secret 에 한 번 만들어 두고 계속 쓴다
 SESSION_SECRET = os.getenv("SESSION_SECRET", "").strip()
+if len(SESSION_SECRET) < 32:
+    _f = DATA / "session_secret"
+    if not _f.exists():
+        import secrets as _s2
+
+        _f.write_text(_s2.token_hex(32), "utf-8")
+    SESSION_SECRET = _f.read_text("utf-8").strip()
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 SESSION_HOURS = 12
 

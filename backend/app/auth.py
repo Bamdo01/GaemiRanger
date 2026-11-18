@@ -61,7 +61,7 @@ def _ip(req: Request) -> str:
 
 def login(req: Request, res: Response, password: str) -> None:
     if not config.login_configured():
-        raise HTTPException(503, "서버에 로그인 비밀번호가 아직 설정되지 않았습니다 (.env 의 APP_PASSWORD_HASH, SESSION_SECRET)")
+        raise HTTPException(503, "서버에 로그인 비밀번호가 아직 설정되지 않았습니다 (backend/.env 의 APP_PASSWORD)")
     ip = _ip(req)
     now = time.time()
     recent = [t for t in _fails.get(ip, []) if now - t < LOCK_SEC]
