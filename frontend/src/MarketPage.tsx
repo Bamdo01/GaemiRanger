@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Heatmap, { Legend, type Tile } from './Heatmap';
 import { useMarket } from './hooks';
-import { arrow, changeText, fmt, fmt2, kstTime, signed, signPct, tone, type Palette } from './lib';
+import { sampleTrade } from './data';
+import { arrow, changeText, fmt, fmt2, kstTime, shares, signed, signPct, tone, won, type Palette } from './lib';
 import { usePortfolio } from './portfolio';
 import { Seg, type Opt } from './Pickers';
 
@@ -10,7 +11,18 @@ import { Seg, type Opt } from './Pickers';
 // 내 포트폴리오는 2026-11-17 부터 [내 자산] 메뉴에서 본다.
 const VIEWS: [string, string][] = [['kospi50', '코스피 상위 50']];
 // TradingView 처럼 위쪽에서 고른다. 첫 값이 기본값이고, 기본값은 주소에 남기지 않는다.
-const SIZE: Opt = [['cap', '시가총액'], ['equal', '같은 크기']];
+// 크기는 TradingView 를 참고해 드롭다운 (2026-11-18). 거래량·거래대금은 지금 예시 값.
+const SIZE: Opt = [
+  ['cap', '시가총액'],
+  ['vol1d', '거래량 1일'],
+  ['vol1w', '거래량 1주'],
+  ['vol1m', '거래량 1달'],
+  ['val1d', '거래대금 1일'],
+  ['val1w', '거래대금 1주'],
+  ['val1m', '거래대금 1달'],
+  ['equal', '같은 크기'],
+];
+const PERIOD: Record<string, number> = { '1d': 0, '1w': 1, '1m': 2 };
 const GROUP: Opt = [['sector', '업종'], ['none', '묶지 않음']];
 
 type Props = { palette: Palette };
@@ -39,10 +51,16 @@ export default function MarketPage({ palette }: Props) {
       stocks.map((s) => {
         const r = ((s.price - s.prev) / s.prev) * 100;
         const h = port.rows.find((x) => x.code === s.code);
+        const tr = sampleTrade(s);
+        const kind = size.slice(0, 3); // cap, vol, val, equ
+        const i = PERIOD[size.slice(3)] ?? 0;
+        const metric = kind === 'vol' ? tr.vol[i] : kind === 'val' ? tr.val[i] : 0;
+        const label = SIZE.find(([v]) => v === size)![1];
         return {
           id: s.code,
           group: groupBy === 'none' ? '' : s.sector,
-          size: size === 'equal' ? 1 : (s.cap * s.price) / s.prev,
+          size: size === 'equal' ? 1 : kind === 'vol' || kind === 'val' ? metric : (s.cap * s.price) / s.prev,
+          extra: kind === 'vol' ? shares(metric) : kind === 'val' ? won(metric) : undefined,
           pct: r,
           name: s.name,
           held: !!h,
@@ -52,6 +70,9 @@ export default function MarketPage({ palette }: Props) {
             ['전일 대비', `${arrow(s.price - s.prev)} ${signed(s.price - s.prev)}원`],
             ['등락률', changeText(r)],
             ['시가총액', `${((s.cap * s.price) / s.prev).toFixed(1)}조원`],
+            ['거래량 1일', shares(tr.vol[0])],
+            ['거래대금 1일', won(tr.val[0])],
+            ...(kind !== 'cap' && kind !== 'equ' && i > 0 ? ([[label, kind === 'vol' ? shares(metric) : won(metric)]] as [string, string][]) : []),
             ['업종', s.sector],
             ...(h ? ([['내 보유', `${fmt(h.amt)}원`], ['내 수익률', changeText(h.profit)]] as [string, string][]) : []),
           ],
@@ -102,7 +123,16 @@ export default function MarketPage({ palette }: Props) {
             ))}
           </select>
         </label>
-        <Seg id="size" label="크기" list={SIZE} cur={size} onPick={(v) => setParam('size', v, SIZE)} />
+        <label className="pk" htmlFor="pk-size-sel">
+          <span>크기</span>
+          <select id="pk-size-sel" className="dd" value={size} onChange={(e) => setParam('size', e.target.value, SIZE)}>
+            {SIZE.map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </label>
         <Seg id="group" label="묶음" list={GROUP} cur={groupBy} onPick={(v) => setParam('group', v, GROUP)} />
       </div>
 

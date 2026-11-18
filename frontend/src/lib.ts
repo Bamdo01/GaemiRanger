@@ -100,3 +100,13 @@ export function squarify<T extends { area: number }>(items: T[], r: Rect): (T & 
   }
   return out;
 }
+
+/** 금액을 조·억 단위로: 1.23조원, 4,560억원, 9,800만원 */
+export function won(n: number): string {
+  if (n >= 1e12) return `${(n / 1e12).toFixed(n >= 1e13 ? 1 : 2)}조원`;
+  if (n >= 1e8) return `${fmt(n / 1e8)}억원`;
+  if (n >= 1e4) return `${fmt(n / 1e4)}만원`;
+  return `${fmt(n)}원`;
+}
+/** 주식 수를 억·만 단위로: 1.2억주, 1,234만주 */
+export const shares = (n: number) => (n >= 1e8 ? `${(n / 1e8).toFixed(1)}억주` : n >= 1e4 ? `${fmt(n / 1e4)}만주` : `${fmt(n)}주`);

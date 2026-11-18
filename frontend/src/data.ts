@@ -87,3 +87,20 @@ export function tickOf(p: number): number {
   if (p < 500000) return 500;
   return 1000;
 }
+
+/** 예시 거래량·거래대금. 종목 코드로 늘 같은 값을 만든다 (실제 값은 한투 시세·일봉으로 바꾼다). */
+export type Trade = { vol: [number, number, number]; val: [number, number, number] };
+function rand(seed: string, salt: number) {
+  let h = 2166136261 ^ salt;
+  for (const c of seed) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return ((h >>> 0) % 10000) / 10000;
+}
+export function sampleTrade(s: Stock): Trade {
+  // 하루 회전율 0.1% ~ 1.5% (시가총액 대비 거래대금)
+  const turn = 0.001 + rand(s.code, 1) * 0.014;
+  const day = s.cap * 1e12 * turn;
+  const week = day * 5 * (0.7 + rand(s.code, 2) * 0.6);
+  const month = week * 4.2 * (0.7 + rand(s.code, 3) * 0.6);
+  const val: [number, number, number] = [day, week, month];
+  return { val, vol: val.map((v) => Math.round(v / s.price)) as [number, number, number] };
+}
