@@ -1,6 +1,3 @@
-import { HeroAnt } from './Ants';
-import type { Palette } from './lib';
-
 export type Opt = [string, string][];
 
 /** 누르면 바로 바뀌는 버튼 묶음 */
@@ -16,13 +13,5 @@ export function Seg({ id, label, list, cur, onPick }: { id: string; label: strin
         ))}
       </div>
     </div>
-  );
-}
-
-export function AntSwitch({ palette, ants, setAnts }: { palette: Palette; ants: boolean; setAnts: (v: boolean) => void }) {
-  return (
-    <button type="button" className="chip" aria-pressed={ants} onClick={() => setAnts(!ants)}>
-      <HeroAnt palette={palette} /> 개미 {ants ? '켬' : '끔'}
-    </button>
   );
 }

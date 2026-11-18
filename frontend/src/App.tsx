@@ -2,7 +2,7 @@ import { Link, Navigate, NavLink, Route, Routes, useParams } from 'react-router-
 import AssetsPage from './AssetsPage';
 import MarketPage from './MarketPage';
 import { STOCK_BY_CODE } from './data';
-import { useAnts, usePalette } from './hooks';
+import { usePalette } from './hooks';
 import { PALETTES } from './lib';
 
 const MENU: [string, string][] = [
@@ -17,7 +17,6 @@ const MENU: [string, string][] = [
 
 export default function App() {
   const [palette, setPalette] = usePalette();
-  const [ants, setAnts] = useAnts();
   return (
     <div className="app">
       <header className="top">
@@ -45,8 +44,8 @@ export default function App() {
       <main className="main">
         <Routes>
           <Route path="/" element={<Navigate to="/market" replace />} />
-          <Route path="/market" element={<MarketPage palette={palette} ants={ants} setAnts={setAnts} />} />
-          <Route path="/assets" element={<AssetsPage palette={palette} ants={ants} setAnts={setAnts} />} />
+          <Route path="/market" element={<MarketPage palette={palette} />} />
+          <Route path="/assets" element={<AssetsPage palette={palette} />} />
           <Route path="/account" element={<Navigate to="/assets" replace />} />
           <Route path="/stock/:code" element={<StockSoon />} />
           <Route path="/:menu" element={<MenuSoon />} />

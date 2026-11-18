@@ -1,5 +1,4 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ANT_T, HeroAnt, SadAnt } from './Ants';
 import { changeText, heatColor, squarify, tone, type Palette } from './lib';
 
 export type Tile = {
@@ -10,6 +9,8 @@ export type Tile = {
   pct: number;
   name: string;
   held?: boolean;
+  /** 칸이 크면 셋째 줄에 보여 줄 값 (예: 평가금액) */
+  extra?: string;
   tip: [string, string][];
 };
 
@@ -18,9 +19,9 @@ const HEAD = 30;
 const PAD = 6;
 const GAP = 5;
 
-type Props = { tiles: Tile[]; palette: Palette; ants: boolean; label: string; onPick: (id: string) => void };
+type Props = { tiles: Tile[]; palette: Palette; label: string; onPick: (id: string) => void };
 
-export default function Heatmap({ tiles, palette, ants, label, onPick }: Props) {
+export default function Heatmap({ tiles, palette, label, onPick }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [tip, setTip] = useState<{ t: Tile; x: number; y: number } | null>(null);
@@ -58,11 +59,8 @@ export default function Heatmap({ tiles, palette, ants, label, onPick }: Props) 
         const ps = Math.max(11, fs * 0.62);
         const showName = w > 40 && h > 24;
         const showPct = showName && h > 42;
-        // 개미는 글자 아래 남은 자리에만 그린다. 자리가 모자라면 그리지 않는다.
         const textH = (showName ? fs * 1.15 : 0) + (showPct ? ps * 1.2 + 2 : 0) + 14;
-        const kind = !ants ? '' : t.pct >= ANT_T ? 'hero' : t.pct <= -ANT_T ? 'sad' : '';
-        const az = kind ? Math.min(64, w * 0.42, h - textH - 6) : 0;
-        const antW = az >= 22 ? az + 12 : 0;
+        const showExtra = !!t.extra && showPct && h > textH + ps * 1.3 && w > 70;
         return (
           <button
             key={t.id}
@@ -88,12 +86,12 @@ export default function Heatmap({ tiles, palette, ants, label, onPick }: Props) 
                 {changeText(t.pct)}
               </span>
             )}
-            {antW > 0 && (
-              <span className="ant" style={{ width: Math.round(az), height: Math.round(az) }}>
-                {kind === 'hero' ? <HeroAnt palette={palette} /> : <SadAnt palette={palette} />}
+            {showExtra && (
+              <span className="t-extra" style={{ fontSize: Math.round(ps * 0.92) }}>
+                {t.extra}
               </span>
             )}
-            {t.held && w > 80 + antW && h > textH + 22 && <span className="mine">내 종목</span>}
+            {t.held && w > 80 && h > textH + 22 && <span className="mine">내 종목</span>}
           </button>
         );
       })}
@@ -159,7 +157,7 @@ function layout(tiles: Tile[], W: number, H: number): { groups: PlacedGroup[]; t
   return out;
 }
 
-export function Legend({ palette, ants }: { palette: Palette; ants: boolean }) {
+export function Legend({ palette }: { palette: Palette }) {
   return (
     <div className="legend" aria-label="범례">
       <span>▼ 하락</span>
@@ -172,16 +170,6 @@ export function Legend({ palette, ants }: { palette: Palette; ants: boolean }) {
         );
       })}
       <span>상승 ▲</span>
-      {ants && (
-        <>
-          <span className="lg-ant">
-            <HeroAnt palette={palette} /> +{ANT_T}% 이상 영웅 개미
-          </span>
-          <span className="lg-ant">
-            <SadAnt palette={palette} /> -{ANT_T}% 이하 눈물 개미
-          </span>
-        </>
-      )}
     </div>
   );
 }

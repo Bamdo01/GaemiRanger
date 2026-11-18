@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { CASH, HOLDINGS, STOCK_BY_CODE, type Stock } from './data';
+import { signPct } from './lib';
 
 export type Row = {
   code: string;
@@ -58,3 +59,28 @@ export function usePortfolio(stocks: Stock[]) {
   }, [stocks]);
 }
 export type Portfolio = ReturnType<typeof usePortfolio>;
+
+/* ---------- 점검: AI 없이 계산 ---------- */
+export function checksOf(port: Portfolio, kospiPct: number) {
+  const top = [...port.rows].sort((a, b) => b.amt - a.amt)[0];
+  const sectors = new Map<string, number>();
+  port.rows.forEach((r) => sectors.set(r.s.sector, (sectors.get(r.s.sector) ?? 0) + r.amt));
+  const [topSector, topSectorAmt] = [...sectors].sort((a, b) => b[1] - a[1])[0];
+  const losers = port.rows.filter((r) => r.profit < 0).sort((a, b) => a.profit - b.profit);
+  const topPct = (top.amt / port.total) * 100;
+  const sectorPct = (topSectorAmt / port.total) * 100;
+  const cashPct = (port.cash / port.total) * 100;
+  const vs = port.todayPct - kospiPct;
+  return {
+    facts: { n: port.rows.length, top, topPct, topSector, sectorPct, cashPct, losers, vs, kospiPct, todayPct: port.todayPct },
+    list: [
+      { label: '가장 큰 종목', value: `${top.s.name} ${topPct.toFixed(1)}%`, warn: topPct > 25, why: '총자산 대비, 25% 넘으면 표시' },
+      { label: '가장 큰 업종', value: `${topSector} ${sectorPct.toFixed(1)}%`, warn: sectorPct > 40, why: '총자산 대비, 40% 넘으면 표시' },
+      { label: '현금', value: `${cashPct.toFixed(1)}%`, warn: cashPct < 5, why: '5% 아래면 표시' },
+      { label: '손실 종목', value: losers.length ? losers.map((r) => `${r.s.name} ${signPct(r.profit)}`).join(', ') : '없음', warn: losers.length > 0, why: '평균단가 대비' },
+      { label: '오늘 코스피 대비', value: `${vs >= 0 ? '+' : ''}${vs.toFixed(2)}%p`, warn: vs < 0, why: '내 주식 오늘 등락률 - 코스피 등락률' },
+    ],
+  };
+}
+export type Facts = ReturnType<typeof checksOf>['facts'];
+

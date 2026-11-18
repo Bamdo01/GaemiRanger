@@ -52,24 +52,6 @@ export function usePalette(): [Palette, (p: Palette) => void] {
   return [palette, setPalette];
 }
 
-/** 개미 켬/끔. 이 브라우저에 기억한다. */
-export function useAnts(): [boolean, (v: boolean) => void] {
-  const [on, setOn] = useState(() => {
-    try {
-      return localStorage.getItem('gaemiranger.ants') !== 'off';
-    } catch {
-      return true;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem('gaemiranger.ants', on ? 'on' : 'off');
-    } catch {
-      /* 무시 */
-    }
-  }, [on]);
-  return [on, setOn];
-}
 
 // ---------- 그룹 (M4): 한 종목은 한 그룹, 기본은 업종 ----------
 export type Group = { id: string; name: string; sector?: string };

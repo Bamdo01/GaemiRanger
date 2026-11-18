@@ -1,11 +1,10 @@
 import { useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ANT_T } from './Ants';
 import Heatmap, { Legend, type Tile } from './Heatmap';
 import { useMarket } from './hooks';
 import { arrow, changeText, fmt, fmt2, kstTime, signed, signPct, tone, type Palette } from './lib';
 import { usePortfolio } from './portfolio';
-import { AntSwitch, Seg, type Opt } from './Pickers';
+import { Seg, type Opt } from './Pickers';
 
 // 보기는 앞으로 늘어날 수 있어서 (코스닥, 관심종목 등) 드롭다운으로 고른다.
 // 내 포트폴리오는 2026-11-17 부터 [내 자산] 메뉴에서 본다.
@@ -14,9 +13,9 @@ const VIEWS: [string, string][] = [['kospi50', '코스피 상위 50']];
 const SIZE: Opt = [['cap', '시가총액'], ['equal', '같은 크기']];
 const GROUP: Opt = [['sector', '업종'], ['none', '묶지 않음']];
 
-type Props = { palette: Palette; ants: boolean; setAnts: (v: boolean) => void };
+type Props = { palette: Palette };
 
-export default function MarketPage({ palette, ants, setAnts }: Props) {
+export default function MarketPage({ palette }: Props) {
   const [sp, setSp] = useSearchParams();
   const pick = (k: string, o: Opt) => {
     const v = sp.get(k);
@@ -61,8 +60,6 @@ export default function MarketPage({ palette, ants, setAnts }: Props) {
     [stocks, port, size, groupBy],
   );
 
-  const nHero = tiles.filter((t) => t.pct >= ANT_T).length;
-  const nSad = tiles.filter((t) => t.pct <= -ANT_T).length;
 
   return (
     <div className="market">
@@ -107,17 +104,12 @@ export default function MarketPage({ palette, ants, setAnts }: Props) {
         </label>
         <Seg id="size" label="크기" list={SIZE} cur={size} onPick={(v) => setParam('size', v, SIZE)} />
         <Seg id="group" label="묶음" list={GROUP} cur={groupBy} onPick={(v) => setParam('group', v, GROUP)} />
-        <AntSwitch palette={palette} ants={ants} setAnts={setAnts} />
-        <span className="grow" />
-        <span className="hint">
-          영웅 개미 {nHero} · 눈물 개미 {nSad}
-        </span>
       </div>
 
       <div className="stage">
-        <Heatmap tiles={tiles} palette={palette} ants={ants} label="시장 히트맵" onPick={(code) => navigate(`/stock/${code}`)} />
+        <Heatmap tiles={tiles} palette={palette} label="시장 히트맵" onPick={(code) => navigate(`/stock/${code}`)} />
       </div>
-      <Legend palette={palette} ants={ants} />
+      <Legend palette={palette} />
     </div>
   );
 }

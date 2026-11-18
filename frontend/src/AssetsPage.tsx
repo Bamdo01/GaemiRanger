@@ -1,200 +1,148 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AiReview from './AiReview';
-import { HeroAnt, SadAnt } from './Ants';
 import GroupPanel from './GroupPanel';
 import Heatmap, { Legend, type Tile } from './Heatmap';
 import { useGroups, useMarket } from './hooks';
-import { arrow, changeText, fmt, kstTime, signed, signPct, tone, type Palette } from './lib';
-import { HELD, usePortfolio, type Portfolio, type Row } from './portfolio';
-import { AntSwitch, Seg, type Opt } from './Pickers';
+import { arrow, changeText, fmt, kstTime, signed, tone, type Palette } from './lib';
+import { HELD, checksOf, usePortfolio, type Portfolio, type Row } from './portfolio';
+import { Seg, type Opt } from './Pickers';
 
-const VIEWS: Opt = [['magazine', '매거진'], ['heatmap', '히트맵'], ['table', '표']];
-const SIZE: Opt = [['hold', '내 보유 금액'], ['equal', '같은 크기']];
-const COLOR: Opt = [['profit', '내 수익률'], ['today', '오늘 등락률']];
-const GROUP: Opt = [['mine', '내 그룹'], ['sector', '업종'], ['none', '묶지 않음']];
+// 내 자산: 보기 버튼 없이 한 화면 (2026-11-18). 위 요약 줄, 왼쪽 히트맵, 오른쪽 점검·비중·AI 리뷰, 아래 표.
+const COLOR: Opt = [['profit', '내 수익률'], ['today', '오늘']];
+const GROUP: Opt = [['mine', '내 그룹'], ['sector', '업종'], ['none', '없음']];
 // 비중 막대 색. 초록·빨강은 오르내림에 쓰므로 피한다.
 const SLICE = ['#4e79a7', '#f28e2b', '#76b7b2', '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac'];
 
-type Props = { palette: Palette; ants: boolean; setAnts: (v: boolean) => void };
-
-export default function AssetsPage({ palette, ants, setAnts }: Props) {
+export default function AssetsPage({ palette }: { palette: Palette }) {
   const [sp, setSp] = useSearchParams();
   const pick = (k: string, o: Opt) => {
     const v = sp.get(k);
     return o.some(([x]) => x === v) ? v! : o[0][0];
   };
-  const view = pick('view', VIEWS);
   const setParam = (k: string, v: string, o: Opt) => {
     const next = new URLSearchParams(sp);
     if (v === o[0][0]) next.delete(k);
     else next.set(k, v);
     setSp(next, { replace: true });
   };
+  const colorBy = pick('color', COLOR);
+  const groupBy = pick('group', GROUP);
 
+  const navigate = useNavigate();
   const { status, stocks, indices, at } = useMarket();
+  const port = usePortfolio(stocks);
+  const groups = useGroups(HELD);
+  const [editing, setEditing] = useState(false);
   const k = indices.find((i) => i.id === 'kospi');
   const kospiPct = k ? ((k.value - k.prev) / k.prev) * 100 : 0;
-  const port = usePortfolio(stocks);
+  const goStock = (c: string) => navigate(`/stock/${c}`);
+
+  const names = port.rows.map((r) => groups.groups.find((g) => g.id === groups.assign[r.code])?.name);
+  const tiles = useMemo(() => tilesOf(port, colorBy, groupBy, names), [port, colorBy, groupBy, names.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (port.rows.length === 0)
+    return (
+      <div className="assets">
+        <div className="empty">보유 종목이 없습니다.</div>
+      </div>
+    );
+
+  const byToday = [...port.rows].sort((a, b) => b.todayPnl - a.todayPnl);
+  const best = byToday[0];
+  const worst = byToday[byToday.length - 1];
 
   return (
     <div className="assets">
-      <div className="toolbar">
-        <Seg id="view" label="보기" list={VIEWS} cur={view} onPick={(v) => setParam('view', v, VIEWS)} />
-        <span className="grow" />
-        <span className="hint">
-          {status.open ? `${kstTime(at)} 기준 · 10초마다 갱신` : status.label} · 예시 데이터
-        </span>
+      <section className="summary" aria-label="내 자산 요약">
+        <div className="sum-item">
+          <span className="sum-k">총자산</span>
+          <b className="sum-v">{fmt(port.total)}원</b>
+          <span className="sum-s">{status.open ? `${kstTime(at)} 기준` : status.label} · 예시 데이터</span>
+        </div>
+        <Sum k="평가손익" v={`${signed(port.pnl)}원`} s={changeText(port.pnlPct)} t={port.pnl} />
+        <Sum k="오늘 손익" v={`${signed(port.todayPnl)}원`} s={`${changeText(port.todayPct)} · 코스피 ${changeText(kospiPct)}`} t={port.todayPnl} />
+        <div className="sum-item">
+          <span className="sum-k">주식 / 현금</span>
+          <b className="sum-v">{fmt(port.stockValue)}원</b>
+          <span className="sum-s">
+            현금 {fmt(port.cash)}원 ({((port.cash / port.total) * 100).toFixed(1)}%)
+          </span>
+        </div>
+        <button type="button" className="sum-item sum-link" onClick={() => goStock(best.code)}>
+          <span className="sum-k">오늘 가장 많이 번 종목</span>
+          <b className="sum-v">{best.s.name}</b>
+          <span className={tone(best.todayPnl)}>
+            {arrow(best.todayPnl)} {signed(best.todayPnl)}원
+          </span>
+        </button>
+        <button type="button" className="sum-item sum-link" onClick={() => goStock(worst.code)}>
+          <span className="sum-k">오늘 가장 많이 잃은 종목</span>
+          <b className="sum-v">{worst.s.name}</b>
+          <span className={tone(worst.todayPnl)}>
+            {arrow(worst.todayPnl)} {signed(worst.todayPnl)}원
+          </span>
+        </button>
+      </section>
+
+      <div className="as-main">
+        <section className="card as-heat" aria-labelledby="h-heat">
+          <div className="card-head">
+            <h2 id="h-heat">보유 종목</h2>
+            <div className="toolbar">
+              <Seg id="color" label="색" list={COLOR} cur={colorBy} onPick={(v) => setParam('color', v, COLOR)} />
+              <Seg id="group" label="묶음" list={GROUP} cur={groupBy} onPick={(v) => setParam('group', v, GROUP)} />
+              {groupBy === 'mine' && (
+                <button type="button" className="btn sm" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
+                  그룹 편집
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="as-map">
+            <Heatmap tiles={tiles} palette={palette} label="보유 종목 히트맵" onPick={goStock} />
+          </div>
+          <Legend palette={palette} />
+        </section>
+
+        <div className="as-side">
+          {groupBy === 'mine' && editing ? (
+            <GroupPanel g={groups} holdings={port.rows.map((r) => ({ code: r.code, name: r.s.name }))} onClose={() => setEditing(false)} />
+          ) : (
+            <>
+              <Checks port={port} kospiPct={kospiPct} />
+              <Weights port={port} />
+              <AiReview port={port} kospiPct={kospiPct} />
+            </>
+          )}
+        </div>
       </div>
-      {port.rows.length === 0 ? (
-        <div className="empty">보유 종목이 없습니다.</div>
-      ) : view === 'heatmap' ? (
-        <HeatView port={port} palette={palette} ants={ants} setAnts={setAnts} pick={pick} setParam={setParam} />
-      ) : view === 'table' ? (
-        <TableView port={port} />
-      ) : (
-        <Magazine port={port} palette={palette} ants={ants} kospiPct={kospiPct} />
-      )}
+
+      <HoldTable port={port} onPick={goStock} />
     </div>
   );
 }
 
-/* ---------- 매거진 ---------- */
-function Magazine({ port, palette, ants, kospiPct }: { port: Portfolio; palette: Palette; ants: boolean; kospiPct: number }) {
-  const navigate = useNavigate();
-  const byToday = [...port.rows].sort((a, b) => b.todayPnl - a.todayPnl);
-  const best = byToday[0].todayPnl > 0 ? byToday[0] : null;
-  const worst = byToday[byToday.length - 1].todayPnl < 0 ? byToday[byToday.length - 1] : null;
-  const date = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric' });
-
-  const slices = [
-    ...[...port.rows].sort((a, b) => b.amt - a.amt).map((r, i) => ({ id: r.code, name: r.s.name, amt: r.amt, color: SLICE[i % SLICE.length] })),
-    { id: 'cash', name: '현금', amt: port.cash, color: 'var(--cash)' },
-  ];
-  const contrib = [...port.rows].sort((a, b) => b.pnl - a.pnl);
-  const maxAbs = Math.max(1, ...contrib.map((r) => Math.abs(r.pnl)));
-
+function Sum({ k, v, s, t }: { k: string; v: string; s: string; t: number }) {
   return (
-    <article className="mag">
-      <header className="mag-head">
-        <p className="kicker">총자산 · {date} 기준</p>
-        <h1 className="mag-total">
-          {fmt(port.total)}
-          <small>원</small>
-        </h1>
-        <p className="deck">
-          <span>
-            평가손익{' '}
-            <b className={tone(port.pnl)}>
-              {arrow(port.pnl)} {signed(port.pnl)}원 ({signPct(port.pnlPct)})
-            </b>
-          </span>
-          <span>
-            오늘{' '}
-            <b className={tone(port.todayPnl)}>
-              {arrow(port.todayPnl)} {signed(port.todayPnl)}원 ({signPct(port.todayPct)})
-            </b>
-          </span>
-          <span>
-            주식 <b>{fmt(port.stockValue)}원</b> · 현금 <b>{fmt(port.cash)}원</b>
-          </span>
-        </p>
-      </header>
-
-      <AiReview port={port} kospiPct={kospiPct} />
-
-      <div className="mag-grid">
-        <Story kind="hero" row={best} palette={palette} ants={ants} onPick={(c) => navigate(`/stock/${c}`)} />
-        <Story kind="sad" row={worst} palette={palette} ants={ants} onPick={(c) => navigate(`/stock/${c}`)} />
-
-        <section className="card weight" aria-labelledby="h-weight">
-          <h2 id="h-weight">자산 비중</h2>
-          <div className="wbar" role="img" aria-label={slices.map((s) => `${s.name} ${((s.amt / port.total) * 100).toFixed(1)}%`).join(', ')}>
-            {slices.map((s) => (
-              <i key={s.id} style={{ flexGrow: s.amt, background: s.color }} />
-            ))}
-          </div>
-          <ul className="wlist">
-            {slices.map((s) => (
-              <li key={s.id}>
-                <i style={{ background: s.color }} aria-hidden="true" />
-                <span className="wname">{s.name}</span>
-                <b>{((s.amt / port.total) * 100).toFixed(1)}%</b>
-                <span className="wamt">{fmt(s.amt)}원</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="card contrib" aria-labelledby="h-contrib">
-          <h2 id="h-contrib">종목별 평가손익</h2>
-          <p className="sub">평균단가 대비 평가손익</p>
-          <ul className="clist">
-            {contrib.map((r) => (
-              <li key={r.code}>
-                <button type="button" className="cname" onClick={() => navigate(`/stock/${r.code}`)}>
-                  {r.s.name}
-                </button>
-                <span className="cbar">
-                  <i className={r.pnl >= 0 ? 'pos' : 'neg'} style={{ width: `${(Math.abs(r.pnl) / maxAbs) * 50}%` }} />
-                </span>
-                <b className={tone(r.pnl)}>
-                  {arrow(r.pnl)} {signed(r.pnl)}원
-                </b>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="card mini" aria-labelledby="h-mini">
-          <div className="card-head">
-            <h2 id="h-mini">보유 종목 히트맵</h2>
-            <Link to="/assets?view=heatmap" className="chip">
-              히트맵으로 크게
-            </Link>
-          </div>
-          <div className="mini-map">
-            <Heatmap tiles={tilesOf(port, 'hold', 'profit', 'none', [])} palette={palette} ants={ants} label="내 자산 작은 히트맵" onPick={(c) => navigate(`/stock/${c}`)} />
-          </div>
-        </section>
-      </div>
-    </article>
+    <div className="sum-item">
+      <span className="sum-k">{k}</span>
+      <b className={`sum-v ${tone(t)}`}>
+        {arrow(t)} {v}
+      </b>
+      <span className="sum-s">{s}</span>
+    </div>
   );
 }
 
-function Story({ kind, row, palette, ants, onPick }: { kind: 'hero' | 'sad'; row: Row | null; palette: Palette; ants: boolean; onPick: (c: string) => void }) {
-  const title = kind === 'hero' ? '오늘 가장 많이 번 종목' : '오늘 가장 많이 잃은 종목';
-  return (
-    <section className={`card story ${kind}`} aria-label={title}>
-      <p className="kicker">{title}</p>
-      {row ? (
-        <>
-          <button type="button" className="story-name" onClick={() => onPick(row.code)}>
-            {row.s.name}
-          </button>
-          <p className={`story-num ${tone(row.todayPnl)}`}>
-            {arrow(row.todayPnl)} {signed(row.todayPnl)}원
-          </p>
-          <p className="sub">
-            오늘 {changeText(row.today)} · {fmt(row.qty)}주 · 내 수익률 {changeText(row.profit)}
-          </p>
-        </>
-      ) : (
-        <p className="sub">{kind === 'hero' ? '오늘 오른 종목이 없어요' : '오늘 내린 종목이 없어요'}</p>
-      )}
-      {ants && <span className="story-ant">{kind === 'hero' ? <HeroAnt palette={palette} /> : <SadAnt palette={palette} />}</span>}
-    </section>
-  );
-}
-
-/* ---------- 히트맵 ---------- */
-function tilesOf(port: Portfolio, size: string, colorBy: string, groupBy: string, groupName: (string | undefined)[]): Tile[] {
+function tilesOf(port: Portfolio, colorBy: string, groupBy: string, groupName: (string | undefined)[]): Tile[] {
   return port.rows.map((r, i) => ({
     id: r.code,
     group: groupBy === 'none' ? '' : groupBy === 'mine' ? groupName[i] ?? r.s.sector : r.s.sector,
-    size: size === 'equal' ? 1 : r.amt,
+    size: r.amt,
     pct: colorBy === 'profit' ? r.profit : r.today,
     name: r.s.name,
+    extra: `${fmt(r.amt)}원 · ${r.weight.toFixed(1)}%`,
     tip: [
       ['수량', `${fmt(r.qty)}주`],
       ['평균단가', `${fmt(r.avg)}원`],
@@ -208,63 +156,91 @@ function tilesOf(port: Portfolio, size: string, colorBy: string, groupBy: string
   }));
 }
 
-type HeatProps = {
-  port: Portfolio;
-  palette: Palette;
-  ants: boolean;
-  setAnts: (v: boolean) => void;
-  pick: (k: string, o: Opt) => string;
-  setParam: (k: string, v: string, o: Opt) => void;
-};
-function HeatView({ port, palette, ants, setAnts, pick, setParam }: HeatProps) {
-  const navigate = useNavigate();
-  const groups = useGroups(HELD);
-  const [editing, setEditing] = useState(false);
-  const size = pick('size', SIZE);
-  const colorBy = pick('color', COLOR);
-  const groupBy = pick('group', GROUP);
-  const names = port.rows.map((r) => groups.groups.find((g) => g.id === groups.assign[r.code])?.name);
-  const tiles = useMemo(() => tilesOf(port, size, colorBy, groupBy, names), [port, size, colorBy, groupBy, names.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+function Checks({ port, kospiPct }: { port: Portfolio; kospiPct: number }) {
+  const { list } = checksOf(port, kospiPct);
+  const warns = list.filter((c) => c.warn).length;
   return (
-    <>
-      <div className="toolbar">
-        <Seg id="size" label="크기" list={SIZE} cur={size} onPick={(v) => setParam('size', v, SIZE)} />
-        <Seg id="color" label="색" list={COLOR} cur={colorBy} onPick={(v) => setParam('color', v, COLOR)} />
-        <Seg id="group" label="묶음" list={GROUP} cur={groupBy} onPick={(v) => setParam('group', v, GROUP)} />
-        <AntSwitch palette={palette} ants={ants} setAnts={setAnts} />
-        {groupBy === 'mine' && (
-          <button type="button" className="chip" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
-            그룹 편집
-          </button>
-        )}
+    <section className="card" aria-labelledby="h-check">
+      <div className="card-head">
+        <h2 id="h-check">점검</h2>
+        <span className="sub">{warns ? `확인할 것 ${warns}개` : '모두 괜찮음'}</span>
       </div>
-      <div className="stage">
-        <Heatmap tiles={tiles} palette={palette} ants={ants} label="내 자산 히트맵" onPick={(c) => navigate(`/stock/${c}`)} />
-        {groupBy === 'mine' && editing && <GroupPanel g={groups} holdings={port.rows.map((r) => ({ code: r.code, name: r.s.name }))} onClose={() => setEditing(false)} />}
+      <ul className="checks">
+        {list.map((c) => (
+          <li key={c.label} className={c.warn ? 'warn' : 'ok'} title={c.why}>
+            <span className="ck-mark" role="img" aria-label={c.warn ? '확인 필요' : '괜찮음'}>
+              {c.warn ? '!' : '✓'}
+            </span>
+            <span className="ck-label">{c.label}</span>
+            <b>{c.value}</b>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function Weights({ port }: { port: Portfolio }) {
+  const slices = [
+    ...[...port.rows].sort((a, b) => b.amt - a.amt).map((r, i) => ({ id: r.code, name: r.s.name, amt: r.amt, color: SLICE[i % SLICE.length] })),
+    { id: 'cash', name: '현금', amt: port.cash, color: 'var(--cash)' },
+  ];
+  const pct = (a: number) => `${((a / port.total) * 100).toFixed(1)}%`;
+  return (
+    <section className="card" aria-labelledby="h-weight">
+      <div className="card-head">
+        <h2 id="h-weight">자산 비중</h2>
+        <span className="sub">현금 포함</span>
       </div>
-      <Legend palette={palette} ants={ants} />
-    </>
+      <div className="wbar" role="img" aria-label={slices.map((s) => `${s.name} ${pct(s.amt)}`).join(', ')}>
+        {slices.map((s) => (
+          <i key={s.id} style={{ flexGrow: s.amt, background: s.color }} title={`${s.name} ${pct(s.amt)}`} />
+        ))}
+      </div>
+      <ul className="wlist">
+        {slices.map((s) => (
+          <li key={s.id}>
+            <i style={{ background: s.color }} aria-hidden="true" />
+            <span className="wname">{s.name}</span>
+            <b>{pct(s.amt)}</b>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
 /* ---------- 표 ---------- */
-type Col = { key: keyof Row | 'name'; label: string; get: (r: Row) => number | string; show: (r: Row) => ReactNode; num?: boolean };
+type Col = { key: string; label: string; get: (r: Row) => number | string; show: (r: Row, maxAbs: number) => ReactNode; num?: boolean };
 const COLS: Col[] = [
   { key: 'name', label: '종목', get: (r) => r.s.name, show: (r) => r.s.name },
   { key: 'qty', label: '수량', get: (r) => r.qty, show: (r) => `${fmt(r.qty)}주`, num: true },
   { key: 'avg', label: '평균단가', get: (r) => r.avg, show: (r) => fmt(r.avg), num: true },
-  { key: 's', label: '현재가', get: (r) => r.s.price, show: (r) => fmt(r.s.price), num: true },
+  { key: 'price', label: '현재가', get: (r) => r.s.price, show: (r) => fmt(r.s.price), num: true },
   { key: 'amt', label: '평가금액', get: (r) => r.amt, show: (r) => fmt(r.amt), num: true },
-  { key: 'pnl', label: '평가손익', get: (r) => r.pnl, show: (r) => <span className={tone(r.pnl)}>{`${arrow(r.pnl)} ${signed(r.pnl)}`}</span>, num: true },
+  {
+    key: 'pnl',
+    label: '평가손익',
+    get: (r) => r.pnl,
+    show: (r, maxAbs) => (
+      <span className="pnl-cell">
+        <span className="pbar" aria-hidden="true">
+          <i className={r.pnl >= 0 ? 'pos' : 'neg'} style={{ width: `${(Math.abs(r.pnl) / maxAbs) * 50}%` }} />
+        </span>
+        <span className={tone(r.pnl)}>{`${arrow(r.pnl)} ${signed(r.pnl)}`}</span>
+      </span>
+    ),
+    num: true,
+  },
   { key: 'profit', label: '수익률', get: (r) => r.profit, show: (r) => <span className={tone(r.profit)}>{changeText(r.profit)}</span>, num: true },
   { key: 'today', label: '오늘', get: (r) => r.today, show: (r) => <span className={tone(r.today)}>{changeText(r.today)}</span>, num: true },
   { key: 'weight', label: '비중', get: (r) => r.weight, show: (r) => `${r.weight.toFixed(1)}%`, num: true },
 ];
 
-function TableView({ port }: { port: Portfolio }) {
-  const navigate = useNavigate();
+function HoldTable({ port, onPick }: { port: Portfolio; onPick: (c: string) => void }) {
   const [sort, setSort] = useState<{ key: string; desc: boolean }>({ key: 'amt', desc: true });
   const col = COLS.find((c) => c.key === sort.key)!;
+  const maxAbs = Math.max(1, ...port.rows.map((r) => Math.abs(r.pnl)));
   const rows = [...port.rows].sort((a, b) => {
     const x = col.get(a);
     const y = col.get(b);
@@ -272,62 +248,67 @@ function TableView({ port }: { port: Portfolio }) {
     return sort.desc ? -d : d;
   });
   return (
-    <div className="tbl-wrap">
-      <table className="tbl">
-        <thead>
-          <tr>
-            {COLS.map((c) => (
-              <th key={c.key} className={c.num ? 'num' : undefined} aria-sort={sort.key === c.key ? (sort.desc ? 'descending' : 'ascending') : 'none'}>
-                <button type="button" onClick={() => setSort({ key: c.key, desc: sort.key === c.key ? !sort.desc : c.num ?? false })}>
-                  {c.label}
-                  <span aria-hidden="true">{sort.key === c.key ? (sort.desc ? ' ▼' : ' ▲') : ''}</span>
-                </button>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.code}>
+    <section className="card" aria-labelledby="h-tbl">
+      <div className="card-head">
+        <h2 id="h-tbl">보유 종목 표</h2>
+        <span className="sub">열 머리를 누르면 정렬 · 금액은 원 · 비중은 주식 기준</span>
+      </div>
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
               {COLS.map((c) => (
-                <td key={c.key} className={c.num ? 'num' : undefined}>
-                  {c.key === 'name' ? (
-                    <button type="button" className="tname" onClick={() => navigate(`/stock/${r.code}`)}>
-                      {r.s.name} <small>{r.code}</small>
-                    </button>
-                  ) : (
-                    c.show(r)
-                  )}
-                </td>
+                <th key={c.key} className={c.num ? 'num' : undefined} aria-sort={sort.key === c.key ? (sort.desc ? 'descending' : 'ascending') : 'none'}>
+                  <button type="button" onClick={() => setSort({ key: c.key, desc: sort.key === c.key ? !sort.desc : !!c.num })}>
+                    {c.label}
+                    <span aria-hidden="true">{sort.key === c.key ? (sort.desc ? ' ▼' : ' ▲') : ''}</span>
+                  </button>
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td>현금 (예수금)</td>
-            <td colSpan={3} />
-            <td className="num">{fmt(port.cash)}</td>
-            <td colSpan={4} />
-          </tr>
-          <tr className="total">
-            <td>합계</td>
-            <td colSpan={3} />
-            <td className="num">{fmt(port.total)}</td>
-            <td className="num">
-              <span className={tone(port.pnl)}>{`${arrow(port.pnl)} ${signed(port.pnl)}`}</span>
-            </td>
-            <td className="num">
-              <span className={tone(port.pnl)}>{changeText(port.pnlPct)}</span>
-            </td>
-            <td className="num">
-              <span className={tone(port.todayPnl)}>{changeText(port.todayPct)}</span>
-            </td>
-            <td className="num">100%</td>
-          </tr>
-        </tfoot>
-      </table>
-      <p className="note">비중은 주식만 기준입니다. 금액 단위는 원입니다. 열 머리를 누르면 정렬합니다.</p>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.code}>
+                {COLS.map((c) => (
+                  <td key={c.key} className={c.num ? 'num' : undefined}>
+                    {c.key === 'name' ? (
+                      <button type="button" className="tname" onClick={() => onPick(r.code)}>
+                        {r.s.name} <small>{r.code}</small>
+                      </button>
+                    ) : (
+                      c.show(r, maxAbs)
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>현금 (예수금)</td>
+              <td colSpan={3} />
+              <td className="num">{fmt(port.cash)}</td>
+              <td colSpan={4} />
+            </tr>
+            <tr className="total">
+              <td>합계</td>
+              <td colSpan={3} />
+              <td className="num">{fmt(port.total)}</td>
+              <td className="num">
+                <span className={tone(port.pnl)}>{`${arrow(port.pnl)} ${signed(port.pnl)}`}</span>
+              </td>
+              <td className="num">
+                <span className={tone(port.pnl)}>{changeText(port.pnlPct)}</span>
+              </td>
+              <td className="num">
+                <span className={tone(port.todayPnl)}>{changeText(port.todayPct)}</span>
+              </td>
+              <td className="num">100%</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
   );
 }
