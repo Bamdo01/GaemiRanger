@@ -1,27 +1,49 @@
 import { useEffect, useState } from 'react';
-import { INDICES, STOCKS, tickOf, type Index, type Stock } from './data';
+import { usePoll, useServer } from './api';
+import { CASH, HOLDINGS, INDICES, STOCKS, tickOf, type Holding, type Index, type Stock } from './data';
 import { marketStatus, type MarketStatus, type Palette } from './lib';
 
 const REFRESH_MS = 10_000; // P2: 장중 10초마다
 
-/** 예시 시세. 장중에는 10초마다 조금씩 움직이고, 장 밖에서는 멈춘다. */
-export function useMarket(): { status: MarketStatus; stocks: Stock[]; indices: Index[]; at: Date } {
+/** 시세. 서버에 로그인돼 있고 한투 키가 있으면 서버(한투 모의) 값, 아니면 예시 값 (장중 10초마다 조금씩 움직임). */
+export function useMarket(): { status: MarketStatus; stocks: Stock[]; indices: Index[]; at: Date; live: boolean; error: string } {
+  const { live } = useServer();
   const [status, setStatus] = useState(marketStatus);
   const [stocks, setStocks] = useState(STOCKS);
   const [indices, setIndices] = useState(INDICES);
   const [at, setAt] = useState(() => new Date());
+  const srv = usePoll<{ stocks: Stock[]; indices: Index[]; at: number | null }>(live ? '/api/market' : null, REFRESH_MS);
   useEffect(() => {
     const id = setInterval(() => {
       const s = marketStatus();
       setStatus(s);
-      if (!s.open) return;
+      if (live || !s.open) return;
       setStocks((prev) => prev.map(jitterStock));
       setIndices((prev) => prev.map((i) => ({ ...i, value: Math.round(i.value * (1 + (Math.random() - 0.5) * 0.002) * 100) / 100 })));
       setAt(new Date());
     }, REFRESH_MS);
     return () => clearInterval(id);
-  }, []);
-  return { status, stocks, indices, at };
+  }, [live]);
+  if (live) {
+    const d = srv.data;
+    return {
+      status,
+      stocks: d?.stocks ?? [],
+      indices: d?.indices ?? [],
+      at: d?.at ? new Date(d.at * 1000) : new Date(),
+      live: true,
+      error: srv.error,
+    };
+  }
+  return { status, stocks, indices, at, live: false, error: '' };
+}
+
+/** 내 잔고. 서버면 한투 모의계좌 잔고, 아니면 예시 */
+export function useHoldings(): { holdings: Holding[]; cash: number; live: boolean; error: string } {
+  const { live } = useServer();
+  const srv = usePoll<{ holdings: Holding[]; cash: number }>(live ? '/api/portfolio' : null, REFRESH_MS);
+  if (live) return { holdings: srv.data?.holdings ?? [], cash: srv.data?.cash ?? 0, live: true, error: srv.error };
+  return { holdings: HOLDINGS, cash: CASH, live: false, error: '' };
 }
 function jitterStock(s: Stock): Stock {
   const raw = s.price * (1 + (Math.random() - 0.5) * 0.006);

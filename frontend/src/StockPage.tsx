@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { post, usePoll } from './api';
 import Chart from './Chart';
-import { CASH, HOLDINGS, STOCKS, groupCandles, priceLimits, sampleBook, sampleDaily, sampleTrade, tickOf, type Stock } from './data';
+import { HOLDINGS, STOCKS, groupCandles, priceLimits, sampleBook, sampleDaily, sampleTrade, tickOf, type Candle, type Stock } from './data';
 import { useMarket } from './hooks';
 import { arrow, changeText, fmt, kstTime, shares, signed, tone, won } from './lib';
 import { usePortfolio } from './portfolio';
@@ -36,9 +37,10 @@ export function StockHome() {
 export default function StockPage() {
   const { code = '' } = useParams();
   const navigate = useNavigate();
-  const { stocks, status, at } = useMarket();
+  const { stocks, status, at, live } = useMarket();
   const port = usePortfolio(stocks);
-  const s = stocks.find((x) => x.code === code);
+  const detail = usePoll<Stock>(live && /^\d{6}$/.test(code) ? `/api/stock/${code}` : null, 5000);
+  const s = live ? detail.data ?? undefined : stocks.find((x) => x.code === code);
   const [watch, setWatch] = useState<string[]>(() => load(WATCH_KEY, HOLDINGS.map((h) => h.code)));
   useEffect(() => save(WATCH_KEY, watch), [watch]);
   useEffect(() => {
@@ -49,7 +51,7 @@ export default function StockPage() {
     return (
       <div className="soon">
         <h1>{code}</h1>
-        <p>예시 데이터에 없는 종목입니다. 지금은 코스피 시가총액 상위 50종목만 있습니다.</p>
+        <p>{live ? (detail.error ? `불러오지 못했습니다: ${detail.error}` : '불러오는 중…') : '예시 데이터에 없는 종목입니다. 지금은 코스피 시가총액 상위 50종목만 있습니다.'}</p>
       </div>
     );
 
@@ -58,29 +60,29 @@ export default function StockPage() {
 
   return (
     <div className="stock">
-      <StockHead s={s} watched={watched} onWatch={() => setWatch(watched ? watch.filter((c) => c !== s.code) : [...watch, s.code])} onGo={go} stocks={stocks} />
+      <StockHead s={s} live={live} watched={watched} onWatch={() => setWatch(watched ? watch.filter((c) => c !== s.code) : [...watch, s.code])} onGo={go} stocks={stocks} />
       <div className="st-grid">
         <WatchList stocks={stocks} watch={watch} held={port.rows.map((r) => r.code)} cur={s.code} onGo={go} />
-        <ChartPanel s={s} />
-        <OrderArea s={s} heldQty={port.rows.find((r) => r.code === s.code)?.qty ?? 0} />
+        <ChartPanel s={s} live={live} />
+        <OrderArea s={s} live={live} cash={port.cash} heldQty={port.rows.find((r) => r.code === s.code)?.sellable ?? 0} />
       </div>
       <div className="st-bottom">
-        <Info s={s} />
+        <Info s={s} live={live} />
         <MyHolding s={s} port={port} />
       </div>
       <p className="st-foot">
-        {status.open ? `${kstTime(at)} 기준 · 10초마다 갱신` : status.label} · 예시 데이터 (차트·호가·주문 모두 예시)
+        {status.open ? `${kstTime(at)} 기준` : status.label} · {live ? '한투 모의투자 계좌 · 주문은 모의로 실제 접수됩니다' : '예시 데이터 (차트·호가·주문 모두 예시)'}
       </p>
     </div>
   );
 }
 
 /* ---------- 머리 ---------- */
-function StockHead({ s, watched, onWatch, onGo, stocks }: { s: Stock; watched: boolean; onWatch: () => void; onGo: (c: string) => void; stocks: Stock[] }) {
+function StockHead({ s, live, watched, onWatch, onGo, stocks }: { s: Stock; live: boolean; watched: boolean; onWatch: () => void; onGo: (c: string) => void; stocks: Stock[] }) {
   const d = s.price - s.prev;
-  const daily = useMemo(() => sampleDaily(s), [s]);
-  const today = daily[daily.length - 1];
-  const tr = sampleTrade(s);
+  const daily = useMemo(() => (live ? [] : sampleDaily(s)), [s, live]);
+  const today = live ? { o: s.open ?? 0, h: s.high ?? 0, l: s.low ?? 0 } : daily[daily.length - 1];
+  const tr = live ? { vol: [s.vol ?? 0], val: [s.val ?? 0] } : sampleTrade(s);
   const [q, setQ] = useState('');
   const hits = q.trim() ? stocks.filter((x) => x.name.includes(q.trim()) || x.code.startsWith(q.trim())).slice(0, 8) : [];
   const stats: [string, string, number][] = [
@@ -206,11 +208,13 @@ const PERIODS: [string, string, number][] = [
   ['w', '주', 5],
   ['m', '월', 21],
 ];
-function ChartPanel({ s }: { s: Stock }) {
+function ChartPanel({ s, live }: { s: Stock; live: boolean }) {
   const [p, setP] = useState('d');
-  const daily = useMemo(() => sampleDaily(s), [s]);
+  const daily = useMemo(() => (live ? [] : sampleDaily(s)), [s, live]);
   const size = PERIODS.find(([k]) => k === p)![2];
-  const candles = useMemo(() => (size === 1 ? daily : groupCandles(daily, size)), [daily, size]);
+  const srv = usePoll<{ candles: Candle[] }>(live ? `/api/stock/${s.code}/candles?period=${p.toUpperCase()}` : null, 60_000);
+  const sample = useMemo(() => (size === 1 ? daily : groupCandles(daily, size)), [daily, size]);
+  const candles = live ? srv.data?.candles ?? [] : sample;
   return (
     <section className="panel-t st-chart" aria-label="차트">
       <div className="st-bar">
@@ -229,20 +233,21 @@ function ChartPanel({ s }: { s: Stock }) {
 }
 
 /* ---------- 호가 + 주문 ---------- */
-function OrderArea({ s, heldQty }: { s: Stock; heldQty: number }) {
+function OrderArea({ s, live, cash, heldQty }: { s: Stock; live: boolean; cash: number; heldQty: number }) {
   const [price, setPrice] = useState(s.price);
   useEffect(() => setPrice(s.price), [s.code]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <Book s={s} onPick={setPrice} picked={price} />
-      <OrderForm s={s} price={price} setPrice={setPrice} heldQty={heldQty} />
+      <Book s={s} live={live} onPick={setPrice} picked={price} />
+      <OrderForm s={s} live={live} cash={cash} price={price} setPrice={setPrice} heldQty={heldQty} />
     </>
   );
 }
 
-function Book({ s, onPick, picked }: { s: Stock; onPick: (p: number) => void; picked: number }) {
-  const { asks, bids } = sampleBook(s);
-  const max = Math.max(...asks.map((a) => a.q), ...bids.map((b) => b.q));
+function Book({ s, live, onPick, picked }: { s: Stock; live: boolean; onPick: (p: number) => void; picked: number }) {
+  const srv = usePoll<{ asks: { p: number; q: number }[]; bids: { p: number; q: number }[] }>(live ? `/api/stock/${s.code}/book` : null, 3000);
+  const { asks, bids } = live ? srv.data ?? { asks: [], bids: [] } : sampleBook(s);
+  const max = Math.max(1, ...asks.map((a) => a.q), ...bids.map((b) => b.q));
   const sumA = asks.reduce((a, x) => a + x.q, 0);
   const sumB = bids.reduce((a, x) => a + x.q, 0);
   const row = (side: 'ask' | 'bid', x: { p: number; q: number }) => {
@@ -296,14 +301,16 @@ function Book({ s, onPick, picked }: { s: Stock; onPick: (p: number) => void; pi
   );
 }
 
-function OrderForm({ s, price, setPrice, heldQty }: { s: Stock; price: number; setPrice: (p: number) => void; heldQty: number }) {
+function OrderForm({ s, live, cash, price, setPrice, heldQty }: { s: Stock; live: boolean; cash: number; price: number; setPrice: (p: number) => void; heldQty: number }) {
+  const [sending, setSending] = useState(false);
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [kind, setKind] = useState<'limit' | 'market'>('limit');
   const [qty, setQty] = useState(1);
   const [confirm, setConfirm] = useState(false);
   const [done, setDone] = useState('');
-  const lim = priceLimits(s.prev);
+  const lim = s.upper && s.lower ? { upper: s.upper, lower: s.lower } : priceLimits(s.prev);
   const p = kind === 'market' ? s.price : price;
+  const CASH = cash;
   const amount = p * qty;
   const maxQty = side === 'buy' ? Math.floor(Math.min(CASH, ORDER_LIMIT) / p) : heldQty;
   // 주문 검사 (O4)
@@ -399,7 +406,7 @@ function OrderForm({ s, price, setPrice, heldQty }: { s: Stock; price: number; s
           {done}
         </p>
       )}
-      <p className="sub">1회 주문 한도 {won(ORDER_LIMIT)} · 모의투자 · 지금은 예시라 주문이 나가지 않습니다</p>
+      <p className="sub">1회 주문 한도 {won(ORDER_LIMIT)} · 모의투자{live ? ' · 서버가 한 번 더 검사합니다' : ' · 지금은 예시라 주문이 나가지 않습니다'}</p>
 
       {confirm && (
         <div className="modal-back" onClick={() => setConfirm(false)}>
@@ -425,7 +432,7 @@ function OrderForm({ s, price, setPrice, heldQty }: { s: Stock; price: number; s
                 <dd className="num">약 {fmt(amount)}원</dd>
               </div>
             </dl>
-            <p className="sub">모의투자 계좌 · 지금은 예시라 실제로 주문이 나가지 않습니다</p>
+            <p className="sub">{live ? '한투 모의투자 계좌로 주문이 나갑니다 (실제 돈은 움직이지 않음)' : '지금은 예시라 실제로 주문이 나가지 않습니다'}</p>
             <div className="row">
               <button type="button" className="btn" autoFocus onClick={() => setConfirm(false)}>
                 취소
@@ -433,12 +440,26 @@ function OrderForm({ s, price, setPrice, heldQty }: { s: Stock; price: number; s
               <button
                 type="button"
                 className={`o-go ${side}`}
-                onClick={() => {
-                  setConfirm(false);
-                  setDone(`(예시) ${s.name} ${fmt(qty)}주 ${sideName} 주문을 받았다고 가정합니다. 실제 주문은 나가지 않았습니다.`);
+                disabled={sending}
+                onClick={async () => {
+                  if (!live) {
+                    setConfirm(false);
+                    setDone(`(예시) ${s.name} ${fmt(qty)}주 ${sideName} 주문을 받았다고 가정합니다. 실제 주문은 나가지 않았습니다.`);
+                    return;
+                  }
+                  setSending(true);
+                  try {
+                    const r = await post<{ orderNo: string; orderTime: string; msg: string }>('/api/orders', { code: s.code, side, kind, price: kind === 'market' ? 0 : p, qty });
+                    setDone(`모의 주문 접수: ${s.name} ${fmt(qty)}주 ${sideName} · 주문번호 ${r.orderNo || '-'}${r.msg ? ` · ${r.msg}` : ''}`);
+                  } catch (e) {
+                    setDone(`주문 안 됨: ${e instanceof Error ? e.message : String(e)}`);
+                  } finally {
+                    setSending(false);
+                    setConfirm(false);
+                  }
                 }}
               >
-                {sideName} 확정
+                {sending ? '보내는 중…' : `${sideName} 확정`}
               </button>
             </div>
           </div>
@@ -449,18 +470,20 @@ function OrderForm({ s, price, setPrice, heldQty }: { s: Stock; price: number; s
 }
 
 /* ---------- 아래: 종목 정보, 내 보유 ---------- */
-function Info({ s }: { s: Stock }) {
-  const daily = useMemo(() => sampleDaily(s), [s]);
+function Info({ s, live }: { s: Stock; live: boolean }) {
+  const daily = useMemo(() => (live ? [] : sampleDaily(s)), [s, live]);
   const y = daily.slice(-250);
-  const lim = priceLimits(s.prev);
+  const lim = s.upper && s.lower ? { upper: s.upper, lower: s.lower } : priceLimits(s.prev);
+  const w52h = live ? s.w52h ?? 0 : Math.max(...y.map((k) => k.h));
+  const w52l = live ? s.w52l ?? 0 : Math.min(...y.map((k) => k.l));
   const rows: [string, string][] = [
-    ['시가총액', `${((s.cap * s.price) / s.prev).toFixed(1)}조원`],
-    ['52주 최고', fmt(Math.max(...y.map((k) => k.h)))],
-    ['52주 최저', fmt(Math.min(...y.map((k) => k.l)))],
+    ['시가총액', live ? `${s.cap.toFixed(1)}조원` : `${((s.cap * s.price) / s.prev).toFixed(1)}조원`],
+    ['52주 최고', fmt(w52h)],
+    ['52주 최저', fmt(w52l)],
     ['상한가', fmt(lim.upper)],
     ['하한가', fmt(lim.lower)],
-    ['PER', '한투 연결 후'],
-    ['PBR', '한투 연결 후'],
+    ['PER', live && s.per ? s.per.toFixed(2) : '한투 연결 후'],
+    ['PBR', live && s.pbr ? s.pbr.toFixed(2) : '한투 연결 후'],
     ['업종', s.sector],
   ];
   return (

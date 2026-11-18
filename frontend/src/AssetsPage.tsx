@@ -28,7 +28,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
   const colorBy = pick('show', SHOW);
 
   const navigate = useNavigate();
-  const { status, stocks, indices, at } = useMarket();
+  const { status, stocks, indices, at, live } = useMarket();
   const port = usePortfolio(stocks);
   const k = indices.find((i) => i.id === 'kospi');
   const kospiPct = k ? ((k.value - k.prev) / k.prev) * 100 : 0;
@@ -53,7 +53,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
         <div className="sum-item">
           <span className="sum-k">총자산</span>
           <b className="sum-v">{fmt(port.total)}원</b>
-          <span className="sum-s">{status.open ? `${kstTime(at)} 기준` : status.label} · 예시 데이터</span>
+          <span className="sum-s">{status.open ? `${kstTime(at)} 기준` : status.label} · {live ? '한투 모의' : '예시 데이터'}</span>
         </div>
         <Sum k="평가손익" v={`${signed(port.pnl)}원`} s={changeText(port.pnlPct)} t={port.pnl} />
         <Sum k="오늘 손익" v={`${signed(port.todayPnl)}원`} s={`${changeText(port.todayPct)} · 코스피 ${changeText(kospiPct)}`} t={port.todayPnl} />

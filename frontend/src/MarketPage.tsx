@@ -33,7 +33,7 @@ export default function MarketPage({ palette }: Props) {
     const v = sp.get(k);
     return o.some(([x]) => x === v) ? v! : o[0][0];
   };
-  const size = pick('size', SIZE);
+  const picked = pick('size', SIZE);
   const groupBy = pick('group', GROUP);
   const setParam = (k: string, v: string, o: Opt) => {
     const next = new URLSearchParams(sp);
@@ -43,7 +43,9 @@ export default function MarketPage({ palette }: Props) {
   };
 
   const navigate = useNavigate();
-  const { status, stocks, indices, at } = useMarket();
+  const { status, stocks, indices, at, live, error } = useMarket();
+  // 서버(한투) 값일 때 1주·1달 거래량은 아직 없다 → 1일로
+  const size = live && /1[wm]$/.test(picked) ? picked.replace(/1[wm]$/, '1d') : picked;
   const port = usePortfolio(stocks);
 
   const tiles: Tile[] = useMemo(
@@ -51,7 +53,7 @@ export default function MarketPage({ palette }: Props) {
       stocks.map((s) => {
         const r = ((s.price - s.prev) / s.prev) * 100;
         const h = port.rows.find((x) => x.code === s.code);
-        const tr = sampleTrade(s);
+        const tr = live ? { vol: [s.vol ?? 0, NaN, NaN], val: [s.val ?? 0, NaN, NaN] } : sampleTrade(s);
         const kind = size.slice(0, 3); // cap, vol, val, equ
         const i = PERIOD[size.slice(3)] ?? 0;
         const metric = kind === 'vol' ? tr.vol[i] : kind === 'val' ? tr.val[i] : 0;
@@ -108,7 +110,7 @@ export default function MarketPage({ palette }: Props) {
         <span className="grow" />
         <span className="stamp">
           {status.open ? `${kstTime(at)} 기준 · 10초마다 갱신` : status.label}
-          <em>예시 데이터</em>
+          <em>{live ? `한투 모의 · ${stocks.length}/50종목${error ? ` · 갱신 실패: ${error}` : ''}` : '예시 데이터'}</em>
         </span>
       </section>
 
@@ -127,8 +129,8 @@ export default function MarketPage({ palette }: Props) {
           <span>크기</span>
           <select id="pk-size-sel" className="dd" value={size} onChange={(e) => setParam('size', e.target.value, SIZE)}>
             {SIZE.map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
+              <option key={v} value={v} disabled={live && /1[wm]$/.test(v)}>
+                {live && /1[wm]$/.test(v) ? `${l} (준비 중)` : l}
               </option>
             ))}
           </select>

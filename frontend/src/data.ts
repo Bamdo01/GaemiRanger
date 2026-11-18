@@ -1,8 +1,41 @@
 // 예시 데이터. 실제 시세가 아니다. 백엔드(한투 API)를 붙이면 이 파일 대신 서버 도구를 부른다.
 
-export type Stock = { code: string; name: string; sector: string; cap: number; prev: number; price: number };
+export type Stock = {
+  code: string;
+  name: string;
+  sector: string;
+  /** 시가총액 (조원) */
+  cap: number;
+  prev: number;
+  price: number;
+  // 서버(한투)에서 올 때만 있는 값
+  open?: number;
+  high?: number;
+  low?: number;
+  /** 오늘 거래량 (주) */
+  vol?: number;
+  /** 오늘 거래대금 (원) */
+  val?: number;
+  per?: number;
+  pbr?: number;
+  w52h?: number;
+  w52l?: number;
+  upper?: number;
+  lower?: number;
+};
 export type Index = { id: string; name: string; prev: number; value: number };
-export type Holding = { code: string; qty: number; avg: number };
+export type Holding = {
+  code: string;
+  qty: number;
+  avg: number;
+  // 서버(한투 잔고)에서 올 때만 있는 값
+  name?: string;
+  sector?: string;
+  price?: number;
+  prev?: number;
+  /** 매도가능수량 */
+  sellable?: number;
+};
 
 // 코드, 이름, 업종, 시가총액(조원), 전일 종가, 현재가 — 코스피 시가총액 상위 50, 보통주만 (P1)
 const RAW: [string, string, string, number, number, number][] = [

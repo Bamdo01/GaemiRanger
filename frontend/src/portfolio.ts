@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { CASH, HOLDINGS, type Stock } from './data';
+import type { Stock } from './data';
+import { useHoldings } from './hooks';
 import { signPct } from './lib';
 
 export type Row = {
@@ -19,22 +20,29 @@ export type Row = {
   todayPnl: number;
   /** 주식 중 비중 % */
   weight: number;
+  /** 매도가능수량 */
+  sellable: number;
 };
 
 /** 지금 시세로 계산한 내 자산 */
 export function usePortfolio(stocks: Stock[]) {
+  const { holdings, cash } = useHoldings();
   return useMemo(() => {
     const by = new Map(stocks.map((s) => [s.code, s]));
-    const base = HOLDINGS.map((h) => {
-      const s = by.get(h.code)!;
+    const base = holdings.map((h) => {
+      // 시장 50종목에 없는 보유 종목은 잔고에 온 값으로
+      const s: Stock = by.get(h.code) ?? { code: h.code, name: h.name ?? h.code, sector: h.sector ?? '기타', cap: 0, prev: h.prev ?? h.price ?? h.avg, price: h.price ?? h.avg };
       const amt = h.qty * s.price;
       return {
-        ...h,
+        code: h.code,
+        qty: h.qty,
+        avg: h.avg,
+        sellable: h.sellable ?? h.qty,
         s,
         amt,
         pnl: amt - h.qty * h.avg,
-        profit: ((s.price - h.avg) / h.avg) * 100,
-        today: ((s.price - s.prev) / s.prev) * 100,
+        profit: h.avg ? ((s.price - h.avg) / h.avg) * 100 : 0,
+        today: s.prev ? ((s.price - s.prev) / s.prev) * 100 : 0,
         todayPnl: h.qty * (s.price - s.prev),
       };
     });
@@ -44,16 +52,16 @@ export function usePortfolio(stocks: Stock[]) {
     const todayPnl = rows.reduce((a, r) => a + r.todayPnl, 0);
     return {
       rows,
-      cash: CASH,
+      cash,
       stockValue,
       cost,
-      total: stockValue + CASH,
+      total: stockValue + cash,
       pnl: stockValue - cost,
       pnlPct: cost ? ((stockValue - cost) / cost) * 100 : 0,
       todayPnl,
       todayPct: stockValue - todayPnl ? (todayPnl / (stockValue - todayPnl)) * 100 : 0,
     };
-  }, [stocks]);
+  }, [stocks, holdings, cash]);
 }
 export type Portfolio = ReturnType<typeof usePortfolio>;
 
