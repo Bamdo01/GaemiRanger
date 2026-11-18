@@ -198,18 +198,23 @@ async def poll_forever() -> None:
             await asyncio.sleep(30)
             continue
         is_open = market_open()
-        try:
-            await fetch_index("kospi", "0001", "코스피")
-            await fetch_index("kosdaq", "1001", "코스닥")
-            await fetch_balance()
-            held = [h["code"] for h in balance.get("holdings", [])]
-            # 보유 종목은 매번, 나머지는 돌아가며 몇 개씩
-            batch = held + [order[(i + k) % len(order)] for k in range(6)]
-            i = (i + 6) % len(order)
-            for code in dict.fromkeys(batch):
-                await fetch_quote(code)
-        except KISError:
-            pass  # kis.last_error 에 남는다. 다음 차례에 다시
-        except Exception as e:  # noqa: BLE001 - 갱신이 죽지 않게
-            kis.last_error = f"{datetime.now():%H:%M:%S} {e.__class__.__name__}: {e}"
-        await asyncio.sleep(1 if is_open else 30)
+
+        async def safe(coro) -> None:
+            # 하나가 실패해도 나머지는 계속 (실패는 kis.last_error 에 남고 다음 차례에 다시)
+            try:
+                await coro
+            except KISError:
+                pass
+            except Exception as e:  # noqa: BLE001 - 갱신이 죽지 않게
+                kis.last_error = f"{datetime.now():%H:%M:%S} {e.__class__.__name__}: {e}"
+
+        await safe(fetch_index("kospi", "0001", "코스피"))
+        await safe(fetch_index("kosdaq", "1001", "코스닥"))
+        await safe(fetch_balance())
+        held = [h["code"] for h in balance.get("holdings", [])]
+        # 보유 종목은 매번, 나머지는 돌아가며 몇 개씩
+        batch = held + [order[(i + k) % len(order)] for k in range(6)]
+        i = (i + 6) % len(order)
+        for code in dict.fromkeys(batch):
+            await safe(fetch_quote(code))
+        await asyncio.sleep(1 if is_open else 5 if len(quotes) < len(order) else 30)

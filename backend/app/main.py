@@ -107,7 +107,7 @@ def get_market():
 @app.get("/api/portfolio", dependencies=api + [Depends(need_kis)])
 def get_portfolio():
     if not market.balance:
-        raise HTTPException(503, detail={"code": "LOADING", "msg": "잔고를 처음 받아 오는 중입니다"})
+        raise HTTPException(503, detail={"code": "LOADING", "msg": f"잔고를 아직 못 받았습니다 ({kis.last_error})" if kis.last_error else "잔고를 처음 받아 오는 중입니다"})
     hs = []
     for h in market.balance["holdings"]:
         q = market.quotes.get(h["code"], {})
