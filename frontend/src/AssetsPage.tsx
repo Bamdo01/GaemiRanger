@@ -1,16 +1,15 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AiReview from './AiReview';
-import GroupPanel from './GroupPanel';
 import Heatmap, { Legend, type Tile } from './Heatmap';
-import { useGroups, useMarket } from './hooks';
+import { useMarket } from './hooks';
 import { arrow, changeText, fmt, kstTime, signed, tone, type Palette } from './lib';
-import { HELD, checksOf, usePortfolio, type Portfolio, type Row } from './portfolio';
+import { checksOf, usePortfolio, type Portfolio, type Row } from './portfolio';
 import { Seg, type Opt } from './Pickers';
 
 // 내 자산: 보기 버튼 없이 한 화면 (2026-11-18). 위 요약 줄, 왼쪽 히트맵, 오른쪽 점검·비중·AI 리뷰, 아래 표.
-const COLOR: Opt = [['profit', '내 수익률'], ['today', '오늘']];
-const GROUP: Opt = [['mine', '내 그룹'], ['sector', '업종'], ['none', '없음']];
+// 히트맵은 업종으로 묶고, 칸에 보여 줄 값(색과 %)만 고른다. 묶음 고르기와 그룹 편집은 2026-11-18 뺐다.
+const SHOW: Opt = [['profit', '내 수익률'], ['today', '오늘 등락률']];
 // 비중 막대 색. 초록·빨강은 오르내림에 쓰므로 피한다.
 const SLICE = ['#4e79a7', '#f28e2b', '#76b7b2', '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac'];
 
@@ -26,20 +25,16 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
     else next.set(k, v);
     setSp(next, { replace: true });
   };
-  const colorBy = pick('color', COLOR);
-  const groupBy = pick('group', GROUP);
+  const colorBy = pick('show', SHOW);
 
   const navigate = useNavigate();
   const { status, stocks, indices, at } = useMarket();
   const port = usePortfolio(stocks);
-  const groups = useGroups(HELD);
-  const [editing, setEditing] = useState(false);
   const k = indices.find((i) => i.id === 'kospi');
   const kospiPct = k ? ((k.value - k.prev) / k.prev) * 100 : 0;
   const goStock = (c: string) => navigate(`/stock/${c}`);
 
-  const names = port.rows.map((r) => groups.groups.find((g) => g.id === groups.assign[r.code])?.name);
-  const tiles = useMemo(() => tilesOf(port, colorBy, groupBy, names), [port, colorBy, groupBy, names.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tiles = useMemo(() => tilesOf(port, colorBy), [port, colorBy]);
 
   if (port.rows.length === 0)
     return (
@@ -90,13 +85,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
           <div className="card-head">
             <h2 id="h-heat">보유 종목</h2>
             <div className="toolbar">
-              <Seg id="color" label="색" list={COLOR} cur={colorBy} onPick={(v) => setParam('color', v, COLOR)} />
-              <Seg id="group" label="묶음" list={GROUP} cur={groupBy} onPick={(v) => setParam('group', v, GROUP)} />
-              {groupBy === 'mine' && (
-                <button type="button" className="btn sm" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
-                  그룹 편집
-                </button>
-              )}
+              <Seg id="칸에 보여 줄 값" label="" list={SHOW} cur={colorBy} onPick={(v) => setParam('show', v, SHOW)} />
             </div>
           </div>
           <div className="as-map">
@@ -106,15 +95,9 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
         </section>
 
         <div className="as-side">
-          {groupBy === 'mine' && editing ? (
-            <GroupPanel g={groups} holdings={port.rows.map((r) => ({ code: r.code, name: r.s.name }))} onClose={() => setEditing(false)} />
-          ) : (
-            <>
-              <Checks port={port} kospiPct={kospiPct} />
-              <Weights port={port} />
-              <AiReview port={port} kospiPct={kospiPct} />
-            </>
-          )}
+          <Checks port={port} kospiPct={kospiPct} />
+          <Weights port={port} />
+          <AiReview port={port} kospiPct={kospiPct} />
         </div>
       </div>
 
@@ -135,10 +118,10 @@ function Sum({ k, v, s, t }: { k: string; v: string; s: string; t: number }) {
   );
 }
 
-function tilesOf(port: Portfolio, colorBy: string, groupBy: string, groupName: (string | undefined)[]): Tile[] {
-  return port.rows.map((r, i) => ({
+function tilesOf(port: Portfolio, colorBy: string): Tile[] {
+  return port.rows.map((r) => ({
     id: r.code,
-    group: groupBy === 'none' ? '' : groupBy === 'mine' ? groupName[i] ?? r.s.sector : r.s.sector,
+    group: r.s.sector,
     size: r.amt,
     pct: colorBy === 'profit' ? r.profit : r.today,
     name: r.s.name,

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CASH, HOLDINGS, STOCK_BY_CODE, type Stock } from './data';
+import { CASH, HOLDINGS, type Stock } from './data';
 import { signPct } from './lib';
 
 export type Row = {
@@ -20,9 +20,6 @@ export type Row = {
   /** 주식 중 비중 % */
   weight: number;
 };
-
-// 보유 종목의 원래 업종 (그룹 기본값). 바뀌지 않으므로 한 번만 만든다.
-export const HELD = HOLDINGS.map((h) => ({ code: h.code, sector: STOCK_BY_CODE.get(h.code)!.sector }));
 
 /** 지금 시세로 계산한 내 자산 */
 export function usePortfolio(stocks: Stock[]) {

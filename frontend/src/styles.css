@@ -157,7 +157,6 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 .as-heat .toolbar { gap: 6px 12px; }
 .as-map { flex: 1 1 auto; min-height: 380px; display: flex; }
 .as-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.as-side .panel { width: 100%; }
 .card { position: relative; padding: 14px 16px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); min-width: 0; }
 .card-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 10px; }
 .card h2 { margin: 0; font-family: Jua, Pretendard, sans-serif; font-weight: 400; font-size: 18px; }
@@ -219,20 +218,6 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
   .as-main { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* 그룹 편집 패널 */
-.panel { width: 340px; flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); overflow: auto; }
-.panel-head { display: flex; align-items: center; justify-content: space-between; }
-.panel h2 { margin: 0; font-size: 17px; }
-.panel h3 { margin: 6px 0 0; font-size: 13px; color: var(--sec); }
-.panel input, .panel select { height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); min-width: 0; }
-.panel input { flex: 1 1 auto; }
-.panel select { max-width: 150px; }
-.row { display: flex; align-items: center; gap: 6px; }
-.glist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.gname { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gname small { margin-left: 6px; color: var(--sec); font-weight: 500; }
-.note { margin: 4px 0 0; font-size: 12px; color: var(--sec); }
-
 /* 아직 없는 페이지 */
 .soon { margin: 60px auto; max-width: 520px; padding: 0 16px; text-align: center; }
 .soon h1 { font-size: 24px; margin: 0 0 8px; }
@@ -241,5 +226,4 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 @media (max-width: 900px) {
   .stage { flex-direction: column; }
   .heat { min-height: 60vh; }
-  .panel { width: 100%; }
 }
