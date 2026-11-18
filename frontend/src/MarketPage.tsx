@@ -139,7 +139,11 @@ export default function MarketPage({ palette }: Props) {
       </div>
 
       <div className="stage">
-        <Heatmap tiles={tiles} palette={palette} label="시장 히트맵" onPick={(code) => navigate(`/stock/${code}`)} />
+        {live && stocks.length === 0 ? (
+          <div className="empty">한투에서 시세를 받는 중입니다. 서버를 켠 직후에는 50종목이 다 채워지는 데 1분쯤 걸립니다.</div>
+        ) : (
+          <Heatmap tiles={tiles} palette={palette} label="시장 히트맵" onPick={(code) => navigate(`/stock/${code}`)} />
+        )}
       </div>
       <Legend palette={palette} />
     </div>
