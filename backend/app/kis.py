@@ -72,7 +72,8 @@ class KIS:
     async def call(self, method: str, path: str, tr_id: str, params: dict | None = None, body: dict | None = None, tr_cont: str = "") -> dict:
         if not config.kis_configured():
             raise KISError("한투 키가 설정되지 않았습니다", "NOT_CONFIGURED")
-        for attempt in range(2):
+        refreshed = False
+        for attempt in range(4):
             tok = await self.token()
             await self._wait_rate()
             headers = {
@@ -92,8 +93,15 @@ class KIS:
                 raise KISError("한투 서버에 연결하지 못했습니다") from e
             d = r.json() if r.content else {}
             # 토큰 만료면 한 번만 다시 발급받아 재시도
-            if d.get("msg_cd") == "EGW00123" and attempt == 0:
+            if d.get("msg_cd") == "EGW00123" and not refreshed:
+                refreshed = True
                 self._token_exp = 0
+                continue
+            # 초당 거래건수 초과: 조회만 잠깐 쉬고 다시 (주문은 다시 보내지 않는다)
+            if d.get("msg_cd") == "EGW00201" and method == "GET" and attempt < 3:
+                async with self._rate_lock:
+                    await asyncio.sleep(1.0)
+                    self._last_call = time.monotonic()
                 continue
             if r.status_code != 200 or d.get("rt_cd") != "0":
                 msg = d.get("msg1") or f"HTTP {r.status_code}"
@@ -102,7 +110,7 @@ class KIS:
             self.last_ok = time.time()
             d["_tr_cont"] = r.headers.get("tr_cont", "")
             return d
-        raise KISError("토큰을 다시 받았지만 실패했습니다")
+        raise KISError("여러 번 다시 해 봤지만 실패했습니다 (호출 한도 또는 토큰)", "RETRY")
 
     async def get(self, path: str, tr_id: str, params: dict, tr_cont: str = "") -> dict:
         return await self.call("GET", path, tr_id, params=params, tr_cont=tr_cont)

@@ -28,7 +28,7 @@ if not KIS_ACNT_PRDT_CD and _acct.isdigit():
         KIS_CANO, KIS_ACNT_PRDT_CD = _acct, "01"
     elif len(_acct) == 10:
         KIS_CANO, KIS_ACNT_PRDT_CD = _acct[:8], _acct[8:]
-KIS_RPS = max(0.5, float(os.getenv("KIS_RPS", "2")))
+KIS_RPS = max(0.5, float(os.getenv("KIS_RPS", "1")))
 
 # 로그인 비밀번호: .env 에 APP_PASSWORD 를 그냥 쓰면 된다. 서버가 켜질 때 해시로 바꿔 메모리에만 둔다.
 # (APP_PASSWORD_HASH 를 쓰면 그쪽이 먼저)
