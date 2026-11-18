@@ -16,17 +16,19 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, market, orders
+from . import auth, config, market, orders, telegram
 from .kis import KISError, kis
 from .universe import UNIVERSE
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    task = asyncio.create_task(market.poll_forever())
+    tasks = [asyncio.create_task(market.poll_forever()), asyncio.create_task(telegram.poll_forever())]
     yield
-    task.cancel()
+    for t in tasks:
+        t.cancel()
     await kis.close()
+    await telegram.close()
 
 
 app = FastAPI(title="GaemiRanger", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -64,17 +66,29 @@ class LoginIn(BaseModel):
     password: str
 
 
+class WaitIn(BaseModel):
+    wait: str
+
+
+class RecoveryIn(BaseModel):
+    password: str
+    code: str
+
+
 @app.get("/api/status")
 def status(req: Request):
     return {
         "server": True,
         "loggedIn": auth.logged_in(req),
         "loginReady": config.login_configured(),
+        "telegram": telegram.configured(),
+        "recovery": auth.recovery_left() > 0,
         "kis": {
             "configured": config.kis_configured(),
             "mode": config.KIS_MODE,
             "lastOk": kis.last_ok or None,
             "lastError": kis.last_error or None,
+            "telegramError": telegram.last_error or None,
         }
         if auth.logged_in(req)
         else None,
@@ -83,9 +97,18 @@ def status(req: Request):
 
 
 @app.post("/api/login")
-def login(body: LoginIn, req: Request, res: Response):
-    auth.login(req, res, body.password)
-    return {"ok": True}
+async def login(body: LoginIn, req: Request, res: Response):
+    return await auth.login(req, res, body.password)
+
+
+@app.post("/api/login/wait")
+def login_wait(body: WaitIn, res: Response):
+    return auth.wait(res, body.wait)
+
+
+@app.post("/api/login/recovery")
+async def login_recovery(body: RecoveryIn, req: Request, res: Response):
+    return await auth.login_recovery(req, res, body.password, body.code)
 
 
 @app.post("/api/logout")

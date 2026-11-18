@@ -61,6 +61,10 @@ SESSION_HOURS = 12
 
 ORDER_LIMIT_WON = int(os.getenv("ORDER_LIMIT_WON", "3000000"))
 
+# 텔레그램 로그인 승인 (둘 다 있으면 비밀번호 다음에 텔레그램 승인이 필요)
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+
 
 def kis_configured() -> bool:
     return bool(KIS_APP_KEY and KIS_APP_SECRET and len(KIS_CANO) == 8 and len(KIS_ACNT_PRDT_CD) == 2)

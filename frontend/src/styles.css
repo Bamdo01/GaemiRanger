@@ -362,6 +362,8 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 .login-card label { color: var(--sec); font-size: 12.5px; }
 .login-card input { height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
 .login-card .btn { height: 40px; justify-content: center; }
+.login-card p { margin: 0; }
+.login-card .link { align-self: center; margin: 4px 0 0; }
 
 /* 아직 없는 페이지 */
 .soon { margin: 60px auto; max-width: 520px; padding: 0 16px; text-align: center; }

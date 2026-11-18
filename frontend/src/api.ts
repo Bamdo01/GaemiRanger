@@ -5,6 +5,10 @@ export type ServerStatus = {
   server: boolean;
   loggedIn: boolean;
   loginReady: boolean;
+  /** 텔레그램 승인이 켜져 있음 */
+  telegram?: boolean;
+  /** 남은 복구 코드가 있음 */
+  recovery?: boolean;
   kis: { configured: boolean; mode: string; lastOk: number | null; lastError: string | null } | null;
   marketOpen: boolean;
 };
