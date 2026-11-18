@@ -26,7 +26,7 @@ export type Row = {
 
 /** 지금 시세로 계산한 내 자산 */
 export function usePortfolio(stocks: Stock[]) {
-  const { holdings, cash } = useHoldings();
+  const { holdings, cash, loaded, error } = useHoldings();
   return useMemo(() => {
     const by = new Map(stocks.map((s) => [s.code, s]));
     const base = holdings.map((h) => {
@@ -52,6 +52,8 @@ export function usePortfolio(stocks: Stock[]) {
     const todayPnl = rows.reduce((a, r) => a + r.todayPnl, 0);
     return {
       rows,
+      loaded,
+      error,
       cash,
       stockValue,
       cost,
@@ -61,7 +63,7 @@ export function usePortfolio(stocks: Stock[]) {
       todayPnl,
       todayPct: stockValue - todayPnl ? (todayPnl / (stockValue - todayPnl)) * 100 : 0,
     };
-  }, [stocks, holdings, cash]);
+  }, [stocks, holdings, cash, loaded, error]);
 }
 export type Portfolio = ReturnType<typeof usePortfolio>;
 

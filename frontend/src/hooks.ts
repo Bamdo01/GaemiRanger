@@ -39,11 +39,11 @@ export function useMarket(): { status: MarketStatus; stocks: Stock[]; indices: I
 }
 
 /** 내 잔고. 서버면 한투 모의계좌 잔고, 아니면 예시 */
-export function useHoldings(): { holdings: Holding[]; cash: number; live: boolean; error: string } {
+export function useHoldings(): { holdings: Holding[]; cash: number; live: boolean; loaded: boolean; error: string } {
   const { live } = useServer();
   const srv = usePoll<{ holdings: Holding[]; cash: number }>(live ? '/api/portfolio' : null, REFRESH_MS);
-  if (live) return { holdings: srv.data?.holdings ?? [], cash: srv.data?.cash ?? 0, live: true, error: srv.error };
-  return { holdings: HOLDINGS, cash: CASH, live: false, error: '' };
+  if (live) return { holdings: srv.data?.holdings ?? [], cash: srv.data?.cash ?? 0, live: true, loaded: !!srv.data, error: srv.error };
+  return { holdings: HOLDINGS, cash: CASH, live: false, loaded: true, error: '' };
 }
 function jitterStock(s: Stock): Stock {
   const raw = s.price * (1 + (Math.random() - 0.5) * 0.006);

@@ -36,16 +36,17 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
 
   const tiles = useMemo(() => tilesOf(port, colorBy), [port, colorBy]);
 
-  if (port.rows.length === 0)
+  if (!port.loaded)
     return (
       <div className="assets">
-        <div className="empty">보유 종목이 없습니다 · 현금 {fmt(port.cash)}원{live ? ' (한투 모의계좌)' : ''}</div>
+        <div className="empty">{port.error ? `잔고를 불러오지 못했습니다: ${port.error}` : '한투 모의계좌 잔고를 불러오는 중입니다…'}</div>
       </div>
     );
 
+  const has = port.rows.length > 0;
   const byToday = [...port.rows].sort((a, b) => b.todayPnl - a.todayPnl);
-  const best = byToday[0];
-  const worst = byToday[byToday.length - 1];
+  const best = has ? byToday[0] : null;
+  const worst = has ? byToday[byToday.length - 1] : null;
 
   return (
     <div className="assets">
@@ -64,6 +65,8 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
             현금 {fmt(port.cash)}원 ({((port.cash / port.total) * 100).toFixed(1)}%)
           </span>
         </div>
+        {best && worst && (
+          <>
         <button type="button" className="sum-item sum-link" onClick={() => goStock(best.code)}>
           <span className="sum-k">오늘 가장 많이 번 종목</span>
           <b className="sum-v">{best.s.name}</b>
@@ -78,6 +81,8 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
             {arrow(worst.todayPnl)} {signed(worst.todayPnl)}원
           </span>
         </button>
+          </>
+        )}
       </section>
 
       <div className="as-main">
@@ -88,20 +93,34 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
               <Seg id="칸에 보여 줄 값" label="" list={SHOW} cur={colorBy} onPick={(v) => setParam('show', v, SHOW)} />
             </div>
           </div>
-          <div className="as-map">
-            <Heatmap tiles={tiles} palette={palette} label="보유 종목 히트맵" onPick={goStock} />
-          </div>
-          <Legend palette={palette} />
+          {has ? (
+            <>
+              <div className="as-map">
+                <Heatmap tiles={tiles} palette={palette} label="보유 종목 히트맵" onPick={goStock} />
+              </div>
+              <Legend palette={palette} />
+            </>
+          ) : (
+            <div className="empty">
+              <p>
+                보유 종목이 없습니다. 현금 {fmt(port.cash)}원{live ? ' (한투 모의계좌)' : ''}
+              </p>
+              <p className="sub">종목 페이지에서 모의 매수하면 여기에 나옵니다.</p>
+              <button type="button" className="btn" onClick={() => navigate('/stock')}>
+                종목 보러 가기
+              </button>
+            </div>
+          )}
         </section>
 
         <div className="as-side">
-          <Checks port={port} kospiPct={kospiPct} />
+          {has && <Checks port={port} kospiPct={kospiPct} />}
           <Weights port={port} />
-          <AiReview port={port} kospiPct={kospiPct} />
+          {has && <AiReview port={port} kospiPct={kospiPct} />}
         </div>
       </div>
 
-      <HoldTable port={port} onPick={goStock} />
+      {has && <HoldTable port={port} onPick={goStock} />}
     </div>
   );
 }

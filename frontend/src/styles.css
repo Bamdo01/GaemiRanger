@@ -117,7 +117,9 @@ a { color: inherit; }
 .hint { font-size: 13px; color: var(--sec); }
 
 .stage { flex: 1 1 auto; min-height: 420px; display: flex; gap: 12px; }
-.empty { flex: 1; display: grid; place-items: center; border-radius: 18px; background: var(--panel); border: 1px dashed var(--line); color: var(--sec); }
+.empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; border-radius: 18px; background: var(--panel); border: 1px dashed var(--line); color: var(--sec); }
+
+.empty p { margin: 0; }
 
 /* 히트맵 (보드게임 모양) */
 .heat { position: relative; flex: 1 1 auto; min-width: 0; border-radius: 18px; overflow: hidden; background: var(--board); box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.08); }

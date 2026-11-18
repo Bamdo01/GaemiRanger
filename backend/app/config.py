@@ -34,6 +34,10 @@ KIS_RPS = max(0.5, float(os.getenv("KIS_RPS", "1")))
 # (APP_PASSWORD_HASH 를 쓰면 그쪽이 먼저)
 APP_PASSWORD_HASH = os.getenv("APP_PASSWORD_HASH", "").strip()
 _plain = os.getenv("APP_PASSWORD", "").strip()
+# 비밀번호가 바뀌면 예전 로그인(쿠키)이 모두 풀리게, 쿠키 서명에 비밀번호 지문을 섞는다
+import hashlib as _hh
+
+PASSWORD_FINGERPRINT = _hh.sha256((APP_PASSWORD_HASH or _plain).encode()).hexdigest()
 if not APP_PASSWORD_HASH and _plain:
     if len(_plain) < 8:
         raise SystemExit(".env 의 APP_PASSWORD 는 8자 이상으로 정해 주세요.")

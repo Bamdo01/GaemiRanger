@@ -33,7 +33,8 @@ def check_password(pw: str, stored: str) -> bool:
 
 
 def _sign(exp: int) -> str:
-    mac = hmac.new(config.SESSION_SECRET.encode(), str(exp).encode(), hashlib.sha256).hexdigest()
+    key = (config.SESSION_SECRET + config.PASSWORD_FINGERPRINT).encode()
+    mac = hmac.new(key, str(exp).encode(), hashlib.sha256).hexdigest()
     return f"{exp}.{mac}"
 
 
