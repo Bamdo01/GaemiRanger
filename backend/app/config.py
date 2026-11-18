@@ -22,6 +22,12 @@ KIS_APP_KEY = os.getenv("KIS_APP_KEY", "").strip()
 KIS_APP_SECRET = os.getenv("KIS_APP_SECRET", "").strip()
 _acct = os.getenv("KIS_ACCOUNT", "").strip().replace(" ", "")
 KIS_CANO, _, KIS_ACNT_PRDT_CD = _acct.partition("-")
+if not KIS_ACNT_PRDT_CD and _acct.isdigit():
+    # 국내주식 모의투자 계좌는 뒤 2자리가 01 → 8자리만 쓰면 01 을 붙인다. 10자리면 8+2 로 나눈다
+    if len(_acct) == 8:
+        KIS_CANO, KIS_ACNT_PRDT_CD = _acct, "01"
+    elif len(_acct) == 10:
+        KIS_CANO, KIS_ACNT_PRDT_CD = _acct[:8], _acct[8:]
 KIS_RPS = max(0.5, float(os.getenv("KIS_RPS", "2")))
 
 # 로그인 비밀번호: .env 에 APP_PASSWORD 를 그냥 쓰면 된다. 서버가 켜질 때 해시로 바꿔 메모리에만 둔다.
