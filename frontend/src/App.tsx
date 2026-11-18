@@ -1,7 +1,7 @@
 import { Link, Navigate, NavLink, Route, Routes, useParams } from 'react-router-dom';
 import AssetsPage from './AssetsPage';
 import MarketPage from './MarketPage';
-import { STOCK_BY_CODE } from './data';
+import StockPage, { StockHome } from './StockPage';
 import { usePalette } from './hooks';
 import { PALETTES } from './lib';
 
@@ -47,7 +47,8 @@ export default function App() {
           <Route path="/market" element={<MarketPage palette={palette} />} />
           <Route path="/assets" element={<AssetsPage palette={palette} />} />
           <Route path="/account" element={<Navigate to="/assets" replace />} />
-          <Route path="/stock/:code" element={<StockSoon />} />
+          <Route path="/stock" element={<StockHome />} />
+          <Route path="/stock/:code" element={<StockPage />} />
           <Route path="/:menu" element={<MenuSoon />} />
         </Routes>
       </main>
@@ -55,19 +56,6 @@ export default function App() {
   );
 }
 
-function StockSoon() {
-  const { code = '' } = useParams();
-  const s = STOCK_BY_CODE.get(code);
-  return (
-    <div className="soon">
-      <h1>{s ? `${s.name} (${code})` : code}</h1>
-      <p>종목 페이지는 다음 차례로 정의하고 만듭니다.</p>
-      <Link to="/market" className="btn">
-        시장으로
-      </Link>
-    </div>
-  );
-}
 
 function MenuSoon() {
   const { menu = '' } = useParams();

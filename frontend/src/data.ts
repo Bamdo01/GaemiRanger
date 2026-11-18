@@ -104,3 +104,86 @@ export function sampleTrade(s: Stock): Trade {
   const val: [number, number, number] = [day, week, month];
   return { val, vol: val.map((v) => Math.round(v / s.price)) as [number, number, number] };
 }
+
+// ---------- 종목 페이지 예시 데이터 (실제는 한투 기간별 시세·호가로 바꾼다) ----------
+export type Candle = { t: string; o: number; h: number; l: number; c: number; v: number };
+const roundTick = (p: number) => Math.max(1, Math.round(p / tickOf(p)) * tickOf(p));
+
+/** 최근 거래일 n개 날짜 (주말 뺌, 공휴일은 아직 안 뺌). 마지막이 오늘 */
+function tradingDays(n: number): Date[] {
+  const out: Date[] = [];
+  const d = new Date();
+  while (out.length < n) {
+    const wd = d.getDay();
+    if (wd !== 0 && wd !== 6) out.unshift(new Date(d));
+    d.setDate(d.getDate() - 1);
+  }
+  return out;
+}
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** 일봉 260개 (약 1년). 종목마다 늘 같은 모양이고, 오늘 봉은 지금 가격으로 끝난다 */
+export function sampleDaily(s: Stock): Candle[] {
+  const days = tradingDays(260);
+  let seed = 0;
+  for (const ch of s.code) seed = (seed * 31 + ch.charCodeAt(0)) % 233280;
+  const r = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+  const baseVol = sampleTrade(s).vol[0];
+  // 전일 종가에서 거꾸로 걸어가며 과거 값을 만든다
+  const closes: number[] = [s.prev];
+  for (let i = 1; i < days.length - 1; i++) closes.unshift(closes[0] / (1 + (r() - 0.48) * 0.04));
+  const out: Candle[] = [];
+  for (let i = 0; i < days.length - 1; i++) {
+    const c = closes[i];
+    const o = i ? closes[i - 1] * (1 + (r() - 0.5) * 0.01) : c * (1 + (r() - 0.5) * 0.02);
+    const h = Math.max(o, c) * (1 + r() * 0.012);
+    const l = Math.min(o, c) * (1 - r() * 0.012);
+    out.push({ t: ymd(days[i]), o: roundTick(o), h: roundTick(h), l: roundTick(l), c: roundTick(c), v: Math.round(baseVol * (0.5 + r())) });
+  }
+  const o = roundTick(s.prev * (1 + (r() - 0.5) * 0.008));
+  out.push({ t: ymd(days[days.length - 1]), o, h: Math.max(o, s.price, roundTick(s.price * 1.004)), l: Math.min(o, s.price, roundTick(s.price * 0.995)), c: s.price, v: baseVol });
+  return out;
+}
+
+/** 일봉을 주봉(5일)·월봉(21일)으로 묶는다 */
+export function groupCandles(d: Candle[], size: number): Candle[] {
+  const out: Candle[] = [];
+  for (let end = d.length; end > 0; end -= size) {
+    const g = d.slice(Math.max(0, end - size), end);
+    out.unshift({ t: g[0].t, o: g[0].o, c: g[g.length - 1].c, h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)), v: g.reduce((a, x) => a + x.v, 0) });
+  }
+  return out;
+}
+
+/** 호가 10단계. asks 는 위(비싼 쪽)부터, bids 는 현재가부터 아래로 */
+export function sampleBook(s: Stock): { asks: { p: number; q: number }[]; bids: { p: number; q: number }[] } {
+  const base = sampleTrade(s).vol[0] / 400;
+  let seed = Math.round(s.price) % 9973;
+  const r = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+  const asks: { p: number; q: number }[] = [];
+  const bids: { p: number; q: number }[] = [];
+  let a = s.price;
+  for (let i = 0; i < 10; i++) {
+    a += tickOf(a);
+    asks.unshift({ p: a, q: Math.round(base * (0.3 + r() * 1.4)) });
+  }
+  let b = s.price;
+  for (let i = 0; i < 10; i++) {
+    bids.push({ p: b, q: Math.round(base * (0.3 + r() * 1.4)) });
+    b -= tickOf(b - 1);
+  }
+  return { asks, bids };
+}
+
+/** 상한가·하한가 (전일 종가 ±30%, 호가 단위로) */
+export function priceLimits(prev: number) {
+  const up = prev * 1.3;
+  const dn = prev * 0.7;
+  return { upper: Math.floor(up / tickOf(up)) * tickOf(up), lower: Math.ceil(dn / tickOf(dn)) * tickOf(dn) };
+}
