@@ -11,6 +11,12 @@ export type Tile = {
   held?: boolean;
   /** 칸이 크면 셋째 줄에 보여 줄 값 (예: 평가금액) */
   extra?: string;
+  /** 등락률 줄 대신 보여 줄 글자 (예: 현금 칸) */
+  label?: string;
+  /** 이 칸의 바탕색 (주면 등락률 색 대신) */
+  color?: string;
+  /** 누르지 않는 칸 */
+  static?: boolean;
   tip: [string, string][];
 };
 
@@ -54,7 +60,7 @@ export default function Heatmap({ tiles, palette, label, onPick }: Props) {
       {L.tiles.map((t) => {
         const w = Math.max(0, t.w - GAP);
         const h = Math.max(0, t.h - GAP);
-        const c = heatColor(t.pct, palette);
+        const c = t.color ? { bg: t.color, ink: 'var(--ink)' } : heatColor(t.pct, palette);
         const fs = Math.max(11, Math.min(28, w / (t.name.length * 0.95 + 1.2), h / 3.4));
         const ps = Math.max(11, fs * 0.62);
         const showName = w > 40 && h > 24;
@@ -66,9 +72,9 @@ export default function Heatmap({ tiles, palette, label, onPick }: Props) {
             key={t.id}
             type="button"
             className="tile"
-            aria-label={`${t.name} ${changeText(t.pct)}`}
-            style={{ left: t.x + GAP / 2, top: t.y + GAP / 2, width: w, height: h, background: c.bg, color: c.ink }}
-            onClick={() => onPick(t.id)}
+            aria-label={`${t.name} ${t.label ?? changeText(t.pct)}`}
+            style={{ left: t.x + GAP / 2, top: t.y + GAP / 2, width: w, height: h, background: c.bg, color: c.ink, cursor: t.static ? 'default' : undefined }}
+            onClick={() => !t.static && onPick(t.id)}
             onMouseMove={(e) => showTip(t, e.clientX, e.clientY)}
             onFocus={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
@@ -83,7 +89,7 @@ export default function Heatmap({ tiles, palette, label, onPick }: Props) {
             )}
             {showPct && (
               <span className="t-pct" style={{ fontSize: Math.round(ps) }}>
-                {changeText(t.pct)}
+                {t.label ?? changeText(t.pct)}
               </span>
             )}
             {showExtra && (

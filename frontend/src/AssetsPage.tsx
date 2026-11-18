@@ -88,29 +88,23 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
       <div className="as-main">
         <section className="card as-heat" aria-labelledby="h-heat">
           <div className="card-head">
-            <h2 id="h-heat">보유 종목</h2>
+            <h2 id="h-heat">보유 종목과 현금</h2>
             <div className="toolbar">
               <Seg id="칸에 보여 줄 값" label="" list={SHOW} cur={colorBy} onPick={(v) => setParam('show', v, SHOW)} />
             </div>
           </div>
-          {has ? (
-            <>
-              <div className="as-map">
-                <Heatmap tiles={tiles} palette={palette} label="보유 종목 히트맵" onPick={goStock} />
-              </div>
-              <Legend palette={palette} />
-            </>
-          ) : (
-            <div className="empty">
-              <p>
-                보유 종목이 없습니다. 현금 {fmt(port.cash)}원{live ? ' (한투 모의계좌)' : ''}
-              </p>
-              <p className="sub">종목 페이지에서 모의 매수하면 여기에 나옵니다.</p>
-              <button type="button" className="btn" onClick={() => navigate('/stock')}>
+          {!has && (
+            <p className="sub">
+              보유 종목이 없습니다. 종목 페이지에서 모의 매수하면 여기에 나옵니다.{' '}
+              <button type="button" className="link" onClick={() => navigate('/stock')}>
                 종목 보러 가기
               </button>
-            </div>
+            </p>
           )}
+          <div className="as-map">
+            <Heatmap tiles={tiles} palette={palette} label="보유 종목과 현금 히트맵" onPick={goStock} />
+          </div>
+          <Legend palette={palette} />
         </section>
 
         <div className="as-side">
@@ -137,14 +131,16 @@ function Sum({ k, v, s, t }: { k: string; v: string; s: string; t: number }) {
   );
 }
 
+// 현금도 한 칸으로 넣는다 (2026-11-18 사용자: 내 자산 히트맵에는 현금도 나와야). 칸 크기와 % 는 총자산 기준.
 function tilesOf(port: Portfolio, colorBy: string): Tile[] {
-  return port.rows.map((r) => ({
+  const of = (amt: number) => (port.total ? ((amt / port.total) * 100).toFixed(1) : '0.0');
+  const stocks: Tile[] = port.rows.map((r) => ({
     id: r.code,
     group: r.s.sector,
     size: r.amt,
     pct: colorBy === 'profit' ? r.profit : r.today,
     name: r.s.name,
-    extra: `${fmt(r.amt)}원 · ${r.weight.toFixed(1)}%`,
+    extra: `${fmt(r.amt)}원 · ${of(r.amt)}%`,
     tip: [
       ['수량', `${fmt(r.qty)}주`],
       ['평균단가', `${fmt(r.avg)}원`],
@@ -153,9 +149,27 @@ function tilesOf(port: Portfolio, colorBy: string): Tile[] {
       ['평가손익', `${arrow(r.pnl)} ${signed(r.pnl)}원`],
       ['내 수익률', changeText(r.profit)],
       ['오늘 등락률', changeText(r.today)],
-      ['비중', `${r.weight.toFixed(1)}%`],
+      ['총자산 중', `${of(r.amt)}%`],
+      ['주식 중', `${r.weight.toFixed(1)}%`],
     ],
   }));
+  if (port.cash <= 0) return stocks;
+  const cash: Tile = {
+    id: 'cash',
+    group: '', // 묶음 머리(등락률) 없이 따로 한 칸
+    size: port.cash,
+    pct: 0,
+    name: '현금',
+    label: `${of(port.cash)}%`,
+    extra: `${fmt(port.cash)}원`,
+    color: 'var(--cash)',
+    static: true,
+    tip: [
+      ['금액', `${fmt(port.cash)}원`],
+      ['총자산 중', `${of(port.cash)}%`],
+    ],
+  };
+  return [...stocks, cash];
 }
 
 function Checks({ port, kospiPct }: { port: Portfolio; kospiPct: number }) {
