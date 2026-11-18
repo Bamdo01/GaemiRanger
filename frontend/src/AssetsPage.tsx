@@ -39,7 +39,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
   if (port.rows.length === 0)
     return (
       <div className="assets">
-        <div className="empty">보유 종목이 없습니다.</div>
+        <div className="empty">보유 종목이 없습니다 · 현금 {fmt(port.cash)}원{live ? ' (한투 모의계좌)' : ''}</div>
       </div>
     );
 
