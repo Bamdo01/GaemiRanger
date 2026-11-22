@@ -175,10 +175,21 @@ def get_portfolio(account: str = "all"):
             q = market.quotes.get(h["code"], {})
             hs[h["code"]] = {**h, "asset": "kr", "price": q.get("price") or h["price"], "prev": q.get("prev") or h["price"], "accounts": [{"id": "kis", "name": config.KIS_ACCOUNT_NAME, "qty": h["qty"]}]}
         cash += market.balance["cash"]
+        # 한투 해외(미국) 잔고: 원화로 바꿔 같은 모양으로 (시세는 자동 시세가 있으면 그것, 없으면 잔고 응답의 현재가)
+        fx = prices.fx.get("usd") or ledger.usd(ledger.load())[0]
+        for o in market.balance.get("overseas", []):
+            live_p = (prices.overseas.get(o["symbol"]) or {})
+            p_usd = live_p.get("price") or o["price"] or o["avg"]
+            prev_usd = live_p.get("prev") or p_usd
+            code = f"us:{o['symbol']}"
+            hs[code] = {"code": code, "name": o["name"], "sector": "해외주식", "asset": "us", "qty": o["qty"], "avg": o["avg"] * fx, "price": p_usd * fx, "prev": prev_usd * fx, "sellable": o["sellable"], "currency": "USD", "rawPrice": p_usd, "manualPrice": False, "accounts": [{"id": "kis", "name": config.KIS_ACCOUNT_NAME, "qty": o["qty"]}]}
+        cash += market.balance.get("usdCash", 0) * fx
         at = market.balance["at"]
     m = ledger.holdings("all" if account in ("all", "kis") else account, market.quotes) if account != "kis" else {"holdings": [], "cash": 0, "realized": 0, "dividends": 0, "fx": 0, "fxSource": "", "usesUsd": False, "fxDefault": False}
     for h in m["holdings"]:
         old = hs.get(h["code"])
+        if old and old.get("currency") != h.get("currency") and h.get("asset") == "us":
+            old = None  # 통화가 다르면 따로 (드묾)
         if old:  # 같은 종목이 한투와 수기 계좌에 다 있으면 한 줄로 (평균단가는 수량 가중)
             qty = old["qty"] + h["qty"]
             hs[h["code"]] = {**old, "qty": qty, "avg": (old["avg"] * old["qty"] + h["avg"] * h["qty"]) / qty, "accounts": old["accounts"] + h["accounts"]}

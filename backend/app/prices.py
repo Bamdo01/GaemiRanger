@@ -95,7 +95,15 @@ async def fetch_gold(code: str) -> None:
 def _symbols() -> tuple[list[str], list[str], bool]:
     from . import ledger  # ledger 가 prices 를 부르므로 여기서 늦게
 
-    return ledger.symbols("us"), ledger.symbols("coin"), ledger.uses_usd()
+    from . import market
+
+    # 수기 계좌 + 한투 연동 계좌의 해외 종목
+    kis_us = [o["symbol"] for o in market.balance.get("overseas", [])]
+    for o in market.balance.get("overseas", []):
+        if o.get("excd"):
+            _excd.setdefault(o["symbol"], o["excd"])
+    us = list(dict.fromkeys(ledger.symbols("us") + kis_us))
+    return us, ledger.symbols("coin"), ledger.uses_usd() or bool(kis_us) or bool(market.balance.get("usdCash"))
 
 
 def _gold_symbols() -> list[str]:

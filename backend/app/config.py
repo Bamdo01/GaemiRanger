@@ -69,7 +69,7 @@ if len(SESSION_SECRET) < 32:
 SESSION_HOURS = 12
 
 ORDER_LIMIT_WON = int(os.getenv("ORDER_LIMIT_WON", "3000000"))
-KIS_ACCOUNT_NAME = "한투 모의"
+KIS_ACCOUNT_NAME = "한투 실전" if REAL else "한투 모의"
 import re as _re
 
 
@@ -82,6 +82,9 @@ def is_kr_code(c: str) -> bool:
 # AI (Claude). 키가 없으면 AI 리뷰는 예시로 남는다
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 AI_MODEL = os.getenv("AI_MODEL", "claude-opus-5-5").strip()
+# Claude Code (claude -p) 로 돌릴 때: 실행 파일 위치(비우면 PATH 에서 찾음)와 구독 토큰(claude setup-token)
+CLAUDE_BIN = os.getenv("CLAUDE_BIN", "").strip()
+CLAUDE_CODE_OAUTH_TOKEN = os.getenv("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
 AI_DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "100"))
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()

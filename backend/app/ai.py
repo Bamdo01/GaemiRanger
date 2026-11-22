@@ -2,11 +2,16 @@
 
 - 원칙 (PLAN.md): AI 에게 주문 도구를 주지 않는다. 읽기 전용 포트폴리오 요약만 보낸다
 - 답은 사라·팔라는 지시 대신 관점과 근거 (docs/pages/assets.md)
-- 키: backend/.env 의 ANTHROPIC_API_KEY. 없으면 화면은 예시로 남는다
-- 모델: AI_MODEL (기본 claude-opus-5-5). 거절(refusal)되면 서버 쪽 fallback 으로 다른 모델이 이어 받는다
+- 2026-11-23 사용자: API 키 대신 Claude Code 로. 서버의 `claude -p` 를 도구 없이(--tools "") 부른다
+  인증은 사용자의 Claude 구독: `claude setup-token` 으로 만든 토큰을 .env 의 CLAUDE_CODE_OAUTH_TOKEN 에
+- Claude Code 가 없고 ANTHROPIC_API_KEY 가 있으면 API 로 (예전 방식)
 - 비용 보호: 하루 AI_DAILY_LIMIT 번 (기본 100)
 """
 
+import asyncio
+import json
+import os
+import shutil
 from collections.abc import AsyncIterator
 from datetime import datetime
 
@@ -54,8 +59,18 @@ class ChatIn(BaseModel):
     messages: list[Turn] = []
 
 
+def claude_bin() -> str:
+    return config.CLAUDE_BIN or shutil.which("claude") or ""
+
+
+def backend() -> str:
+    if claude_bin():
+        return "claude-code"
+    return "api" if config.ANTHROPIC_API_KEY else ""
+
+
 def configured() -> bool:
-    return bool(config.ANTHROPIC_API_KEY)
+    return bool(backend())
 
 
 def client() -> anthropic.AsyncAnthropic:
@@ -142,6 +157,9 @@ async def answer(b: ChatIn, ctx: str) -> AsyncIterator[str]:
         {"type": "text", "text": f"[사용자가 고른 관점] {INVESTORS[b.investor]}\n\n[사용자 포트폴리오]\n{ctx}"},
     ]
 
+    if backend() == "claude-code":
+        return _claude_code(system[0]["text"] + "\n\n" + system[1]["text"], msgs)
+
     async def gen() -> AsyncIterator[str]:
         try:
             async with client().beta.messages.stream(
@@ -170,3 +188,70 @@ async def answer(b: ChatIn, ctx: str) -> AsyncIterator[str]:
             yield "\n[AI 서버에 연결하지 못했습니다]"
 
     return gen()
+
+
+# ---------- Claude Code (claude -p) ----------
+def _prompt(msgs: list[dict]) -> str:
+    """대화를 한 덩어리 글로 (claude -p 는 질문 하나를 받는다)"""
+    if len(msgs) == 1:
+        return msgs[0]["content"]
+    past = "\n".join(("사용자: " if m["role"] == "user" else "AI: ") + m["content"] for m in msgs[:-1])
+    return f"[지금까지 대화]\n{past}\n\n[지금 질문]\n{msgs[-1]['content']}"
+
+
+async def _claude_code(system: str, msgs: list[dict]) -> AsyncIterator[str]:
+    work = config.DATA / "ai-work"  # 빈 폴더에서 돌린다 (프로젝트 파일·설정을 읽지 않게)
+    work.mkdir(exist_ok=True)
+    env = {**os.environ, "DISABLE_AUTOUPDATER": "1", "DISABLE_TELEMETRY": "1"}
+    if config.CLAUDE_CODE_OAUTH_TOKEN:
+        # 서버: 구독 토큰으로 인증하고, 설정 파일은 앱이 쓸 수 있는 data/ 안에 둔다
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = config.CLAUDE_CODE_OAUTH_TOKEN
+        env["CLAUDE_CONFIG_DIR"] = str(config.DATA / "claude")
+    args = [
+        claude_bin(), "-p",
+        "--output-format", "stream-json", "--include-partial-messages", "--verbose",
+        "--tools", "",  # 도구 없음: 파일·명령·주문 아무것도 못 한다
+        "--strict-mcp-config", "--no-session-persistence", "--setting-sources", "",
+        "--model", config.AI_MODEL,
+        "--system-prompt", system,
+    ]
+    proc = await asyncio.create_subprocess_exec(*args, cwd=str(work), env=env, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=2**22)
+    proc.stdin.write(_prompt(msgs).encode())
+    await proc.stdin.drain()
+    proc.stdin.close()
+    got = False
+    try:
+        while True:
+            try:
+                line = await asyncio.wait_for(proc.stdout.readline(), timeout=180)
+            except asyncio.TimeoutError:
+                yield "\n[AI 답이 너무 오래 걸려 멈췄습니다]"
+                break
+            if not line:
+                break
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            t = d.get("type")
+            ev = d.get("event") or {}
+            if t == "stream_event" and ev.get("type") == "content_block_delta" and (ev.get("delta") or {}).get("type") == "text_delta":
+                got = True
+                yield ev["delta"]["text"]
+            elif t == "result":
+                if d.get("is_error") or d.get("subtype") != "success":
+                    msg = str(d.get("result") or d.get("subtype") or "")
+                    if "login" in msg.lower() or "auth" in msg.lower() or "token" in msg.lower():
+                        yield "\n[Claude Code 로그인이 필요합니다. backend/.env 의 CLAUDE_CODE_OAUTH_TOKEN 을 확인해 주세요]"
+                    else:
+                        yield f"\n[AI 오류: {msg[:200]}]"
+                elif not got and d.get("result"):
+                    yield d["result"]  # 조각이 안 왔으면 최종 글로
+        if proc.returncode is None:
+            await asyncio.wait_for(proc.wait(), timeout=10)
+        if proc.returncode and not got:
+            err = (await proc.stderr.read()).decode(errors="replace")[-300:]
+            yield f"\n[Claude Code 실행 실패: {err.strip() or proc.returncode}]"
+    finally:
+        if proc.returncode is None:
+            proc.kill()

@@ -128,9 +128,57 @@ async def fetch_balance() -> dict:
                 "price": _i(r.get("prpr")),
             }
         )
+    overseas, usd_cash = await _fetch_overseas_balance()
     balance.clear()
-    balance.update({"holdings": holdings, "cash": _i(out2.get("prvs_rcdl_excc_amt")) or _i(out2.get("dnca_tot_amt")), "at": time.time()})
+    balance.update({"holdings": holdings, "cash": _i(out2.get("prvs_rcdl_excc_amt")) or _i(out2.get("dnca_tot_amt")), "overseas": overseas, "usdCash": usd_cash, "at": time.time()})
     return balance
+
+
+OVRS_PRESENT = "/uapi/overseas-stock/v1/trading/inquire-present-balance"
+EXCD = {"NASD": "NAS", "NAS": "NAS", "NYSE": "NYS", "NYS": "NYS", "AMEX": "AMS", "AMS": "AMS"}
+
+
+def _pick(r: dict, *keys: str) -> str:
+    """공식 문서의 항목 이름 후보 중 값이 있는 것 (2026-11-23: 해외 보유가 없어 실제 이름은 아직 못 봄)"""
+    for k in keys:
+        if r.get(k) not in (None, "", "0", "0.00000", "0.00000000"):
+            return r[k]
+    return ""
+
+
+async def _fetch_overseas_balance() -> tuple[list[dict], float]:
+    """한투 해외(미국) 잔고와 달러 예수금. 체결기준현재잔고 CTRP6504R (모의 VTRP6504R) — 2026-11-23 실전에서 호출 확인"""
+    try:
+        d = await kis.get(
+            OVRS_PRESENT,
+            config.tr("VTRP6504R"),
+            {"CANO": config.KIS_CANO, "ACNT_PRDT_CD": config.KIS_ACNT_PRDT_CD, "WCRC_FRCR_DVSN_CD": "02", "NATN_CD": "840", "TR_MKET_CD": "00", "INQR_DVSN_CD": "00"},
+        )
+    except KISError:
+        return balance.get("overseas", []), balance.get("usdCash", 0.0)
+    out = []
+    for r in d.get("output1") or []:
+        qty = _f(_pick(r, "cblc_qty13", "ccld_qty_smtl1", "ovrs_cblc_qty", "hldg_qty"))
+        sym = _pick(r, "pdno", "ovrs_pdno").strip()
+        if qty <= 0 or not sym:
+            continue
+        ex = EXCD.get(_pick(r, "ovrs_excg_cd", "tr_mket_cd").strip(), "")
+        out.append(
+            {
+                "symbol": sym,
+                "name": _pick(r, "prdt_name", "ovrs_item_name") or sym,
+                "qty": qty,
+                "avg": _f(_pick(r, "avg_unpr3", "pchs_avg_pric", "frcr_pchs_amt1")),  # 달러
+                "price": _f(_pick(r, "ovrs_now_pric1", "now_pric2", "ovrs_now_pric")),  # 달러
+                "excd": ex,
+                "sellable": _f(_pick(r, "ord_psbl_qty1", "ord_psbl_qty")),
+            }
+        )
+    usd = 0.0
+    for r in d.get("output2") or []:
+        if (r.get("crcy_cd") or "").upper() == "USD":
+            usd = _f(_pick(r, "frcr_dncl_amt_2", "frcr_dncl_amt", "frcr_drwg_psbl_amt_1"))
+    return out, usd
 
 
 async def fetch_buyable(code: str, price: int, market: bool) -> int:

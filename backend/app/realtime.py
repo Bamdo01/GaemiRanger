@@ -65,7 +65,7 @@ def wanted() -> tuple[list[tuple[str, str]], list[str]]:
     from . import rules  # 규칙 종목은 보유 다음 순서
 
     out += [("H0STCNT0", c) for c in rules.codes()]
-    for s in ledger.symbols("us"):
+    for s in dict.fromkeys(ledger.symbols("us") + [o["symbol"] for o in market.balance.get("overseas", [])]):
         ex = prices._excd.get(s)
         if ex:  # 거래소를 아직 모르면 조회가 먼저 찾는다
             out.append(("HDFSCNT0", US_PREFIX[ex] + s))
