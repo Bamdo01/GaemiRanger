@@ -66,11 +66,8 @@ function jitterStock(s: Stock): Stock {
   return { ...s, price };
 }
 
-/** 팔레트는 밤하늘로 고정 (2026-11-22 사용자: 바꾸지 못하게). 크림·화이트 색 정의는 styles.css 에 남겨 둠 */
+/** 색은 밤하늘 하나뿐 */
 export function usePalette(): Palette {
-  useEffect(() => {
-    document.documentElement.dataset.palette = 'night';
-  }, []);
   return 'night';
 }
 

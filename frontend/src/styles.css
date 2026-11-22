@@ -1,40 +1,5 @@
-/* 팔레트: 크림(기본), 화이트, 밤하늘. html 의 data-palette 로 바꾼다. */
-:root,
-:root[data-palette='cream'] {
-  --bg: #fbf3e4;
-  --panel: #ffffff;
-  --ink: #2b1d12;
-  --sec: #7a6650;
-  --line: #eadbc2;
-  --board: #e6d3b3;
-  --grp: #f3e6cf;
-  --seg: #eadbc2;
-  --seg-on: #ffffff;
-  --accent: #ffc93c;
-  --accent-ink: #2b1d12;
-  --up: #13793d;
-  --dn: #c2312a;
-  --cash: #cdbb9d;
-  color-scheme: light;
-}
-:root[data-palette='white'] {
-  --bg: #f6f7f9;
-  --panel: #ffffff;
-  --ink: #16171b;
-  --sec: #60646f;
-  --line: #e3e5ea;
-  --board: #e4e6eb;
-  --grp: #f3f4f7;
-  --seg: #e9ebef;
-  --seg-on: #ffffff;
-  --accent: #16171b;
-  --accent-ink: #ffffff;
-  --up: #12783a;
-  --dn: #d42c2c;
-  --cash: #c9ccd4;
-  color-scheme: light;
-}
-:root[data-palette='night'] {
+/* 색: 밤하늘 하나만 (2026-11-22 사용자: 다른 테마는 필요 없음) */
+:root {
   --bg: #0f1424;
   --panel: #182036;
   --ink: #eef1f8;
@@ -79,10 +44,6 @@ a { color: inherit; }
 .nav a:hover { color: var(--ink); }
 .nav a.active { background: var(--seg); color: var(--ink); font-weight: 800; }
 .badge { padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; font-weight: 700; color: var(--sec); }
-.dot { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 50%; vertical-align: -1px; border: 1px solid rgba(0, 0, 0, 0.25); }
-.dot-cream { background: #fbf3e4; }
-.dot-white { background: #ffffff; }
-.dot-night { background: #0f1424; }
 
 .btn { display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .btn:hover { border-color: var(--sec); }
@@ -221,8 +182,7 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 }
 
 /* 종목: 프로 터미널 배치 (칸 사이 1px 선, 촘촘한 글자, 숫자는 고정폭) */
-:root { --ma5: #c98a00; --ma20: #7c4ddb; --ma60: #0f8f8a; }
-:root[data-palette='night'] { --ma5: #f5b544; --ma20: #b794f6; --ma60: #4fd1c5; }
+:root { --ma5: #f5b544; --ma20: #b794f6; --ma60: #4fd1c5; }
 .num { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 .sec { color: var(--sec); }
 .stock { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 1px; background: var(--line); overflow: auto; font-size: 13px; }
@@ -325,7 +285,7 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 .o-go.buy { background: var(--up); }
 .o-go.sell { background: var(--dn); }
 .o-go:disabled { opacity: 0.4; cursor: not-allowed; }
-:root[data-palette='night'] .o-go, :root[data-palette='night'] .order-side button[aria-pressed='true'] { color: #0f1424; }
+.o-go, .order-side button[aria-pressed='true'] { color: #0f1424; }
 
 .modal-back { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, 0.45); }
 .modal { width: min(380px, 100%); padding: 18px; border-radius: 14px; background: var(--panel); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35); display: flex; flex-direction: column; gap: 12px; }

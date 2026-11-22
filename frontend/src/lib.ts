@@ -1,10 +1,5 @@
-/** 색 팔레트. 모드(화이트/블랙) 대신 팔레트 하나를 고른다. */
-export type Palette = 'cream' | 'white' | 'night';
-export const PALETTES: [Palette, string][] = [
-  ['cream', '크림'],
-  ['white', '화이트'],
-  ['night', '밤하늘'],
-];
+/** 색은 밤하늘 하나 (2026-11-22 사용자). 화면 부품이 팔레트를 받던 자리는 그대로 둔다 */
+export type Palette = 'night';
 
 export const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
 export const fmt2 = (n: number) => n.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -17,10 +12,7 @@ export const tone = (v: number) => (v > 0 ? 'up' : v < 0 ? 'dn' : 'flat');
 
 // ---------- 히트맵 색: 상승 초록, 하락 빨강, ±3%에서 가장 진함 ----------
 type RGB = [number, number, number];
-// 오르면 초록, 내리면 빨강은 모든 팔레트에서 같다. 바탕(0%)과 진하기만 팔레트에 맞춘다.
 const HEAT: Record<Palette, { base: RGB; up: RGB; dn: RGB; dark: string; light: string }> = {
-  cream: { base: [240, 231, 214], up: [44, 160, 86], dn: [226, 80, 66], dark: '#2b1d12', light: '#ffffff' },
-  white: { base: [232, 233, 237], up: [36, 156, 84], dn: [230, 78, 78], dark: '#16171b', light: '#ffffff' },
   night: { base: [46, 56, 82], up: [44, 172, 100], dn: [214, 76, 82], dark: '#0f1424', light: '#ffffff' },
 };
 export function heatColor(pct: number, palette: Palette): { bg: string; ink: string } {
