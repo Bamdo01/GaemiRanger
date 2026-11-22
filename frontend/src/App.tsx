@@ -3,6 +3,7 @@ import { post, useServer } from './api';
 import AssetsPage from './AssetsPage';
 import Login from './Login';
 import MarketPage from './MarketPage';
+import OrderPage from './OrderPage';
 import StockPage, { StockHome } from './StockPage';
 import { usePalette } from './hooks';
 
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/account" element={<Navigate to="/assets" replace />} />
           <Route path="/stock" element={<StockHome />} />
           <Route path="/stock/:code" element={<StockPage />} />
+          <Route path="/order" element={<OrderPage />} />
           <Route path="/:menu" element={<MenuSoon />} />
         </Routes>
       </main>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { post, usePoll } from './api';
 import Chart from './Chart';
 import { HOLDINGS, STOCKS, groupCandles, priceLimits, sampleBook, sampleDaily, sampleTrade, tickOf, type Candle, type Stock } from './data';
@@ -406,6 +406,14 @@ function OrderForm({ s, live, cash, price, setPrice, heldQty }: { s: Stock; live
       {done && (
         <p className="o-done" role="status">
           {done}
+          {live && done.startsWith('모의 주문 접수') && (
+            <>
+              {' '}
+              <Link to="/order" className="link">
+                주문 내역 보기
+              </Link>
+            </>
+          )}
         </p>
       )}
       <p className="sub">1회 주문 한도 {won(ORDER_LIMIT)} · 모의투자{live ? ' · 서버가 한 번 더 검사합니다' : ' · 지금은 예시라 주문이 나가지 않습니다'}</p>

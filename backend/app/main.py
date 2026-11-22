@@ -298,6 +298,36 @@ async def post_order(o: orders.OrderIn):
     return await orders.place(o)
 
 
+@app.get("/api/orders", dependencies=api + [Depends(need_kis)])
+@kis_errors
+async def get_orders(scope: str = "open", days: int = 30):
+    if scope not in ("open", "today", "past") or not 1 <= days <= 90:
+        raise HTTPException(400, "잘못된 요청입니다")
+    return await orders.list_orders(scope, days)
+
+
+@app.post("/api/orders/cancel-all", dependencies=api + [Depends(need_kis)])
+@kis_errors
+async def post_cancel_all():
+    return await orders.cancel_all()
+
+
+@app.post("/api/orders/{no}/cancel", dependencies=api + [Depends(need_kis)])
+@kis_errors
+async def post_cancel(no: str):
+    if not no.isdigit():
+        raise HTTPException(400, "주문번호가 잘못됐습니다")
+    return await orders.cancel(no)
+
+
+@app.post("/api/orders/{no}/modify", dependencies=api + [Depends(need_kis)])
+@kis_errors
+async def post_modify(no: str, m: orders.ModifyIn):
+    if not no.isdigit():
+        raise HTTPException(400, "주문번호가 잘못됐습니다")
+    return await orders.modify(no, m)
+
+
 @app.get("/api/orders/today", dependencies=api)
 def get_orders_today():
     return {"orders": orders.today_log()}
