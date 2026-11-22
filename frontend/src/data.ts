@@ -38,7 +38,12 @@ export type Holding = {
   /** kr 국내주식, us 해외주식, coin 코인, etc 기타 (수기 자산) */
   asset?: string;
   /** 어느 계좌에 몇 개 */
-  accounts?: { name: string; qty: number }[];
+  accounts?: { id: string; name: string; qty: number }[];
+  /** 수기 자산의 원래 통화와 그 통화의 현재가 */
+  currency?: string;
+  rawPrice?: number;
+  /** 현재가를 사람이 넣는 자산 (해외주식, 코인) */
+  manualPrice?: boolean;
 };
 export type Account = { id: string; name: string; linked: boolean };
 

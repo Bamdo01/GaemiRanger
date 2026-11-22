@@ -335,21 +335,55 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
   .heat { min-height: 60vh; }
 }
 
-/* 내 자산: 계좌 고르기, 수기 거래 기록 */
+/* 내 자산: 계좌 고르기, 환율 칩, 기록 서랍 (오른쪽에서 열림) */
 .as-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
-.ledger h3 { margin: 0; font-size: 14px; }
-.in { height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink); font-size: 13px; min-width: 0; }
+.in { height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink); font-size: 13px; min-width: 0; width: 100%; }
 .in.sm { height: 28px; width: 110px; }
-.lg-accts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
-.lg-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 10px; background: var(--seg); font-weight: 700; font-size: 13px; }
-.lg-chip .link { margin: 0; }
-.lg-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
-.lg-box { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); }
-.lg-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
-.lg-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; background: var(--seg); margin-bottom: 12px; }
-.lg-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 10px; }
-.lg-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--sec); font-weight: 600; }
-.lg-actions { display: flex; gap: 8px; }
-.lg-list-head { margin-top: 4px; }
-.lg-btns { display: flex; gap: 4px; justify-content: flex-end; }
-.tbl tr.editing { background: var(--seg); }
+.in.big { height: 42px; font-size: 16px; font-weight: 700; }
+.fx-chip { height: 32px; background: var(--seg); }
+.fx-chip.warn { box-shadow: inset 0 0 0 1px var(--dn); color: var(--dn); }
+.fx-chip-form, .price-form { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.price-edit { padding: 2px 4px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; cursor: pointer; border-bottom: 1px dashed var(--sec); }
+.price-edit:hover { background: var(--seg); }
+.price-edit small { color: var(--sec); }
+.add-btn { width: 28px; justify-content: center; padding: 0; }
+.start-card p { margin: 6px 0 10px; }
+
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; width: min(440px, 100vw); display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -18px 0 40px rgba(0, 0, 0, 0.45); animation: dr-in 0.18s ease-out; outline: none; }
+@keyframes dr-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .drawer { animation: none; } }
+.dr-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 8px; }
+.dr-head h2 { margin: 0; font-family: Jua, Pretendard, sans-serif; font-weight: 400; font-size: 20px; }
+.dr-tabs { margin: 0 16px; }
+.dr-tabs button { flex: 1 1 0; }
+.dr-toast { margin: 10px 16px 0; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--up) 18%, transparent); color: var(--up); font-weight: 700; font-size: 13px; }
+.dr-body { flex: 1 1 auto; overflow: auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+.dr-form { display: flex; flex-direction: column; gap: 12px; }
+.dr-seg button { flex: 1 1 0; }
+.dr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dr-chips .chip { height: 32px; background: var(--seg); }
+.dr-chips .chip[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); opacity: 1; }
+.dr-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dr-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--sec); font-weight: 600; }
+.dr-field.wide { grid-column: 1 / -1; }
+.dr-search { position: relative; display: flex; flex-direction: column; gap: 4px; }
+.dr-hits { position: absolute; top: 66px; left: 0; right: 0; z-index: 2; margin: 0; padding: 4px; list-style: none; border-radius: 10px; background: var(--seg-on); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4); }
+.dr-hits button { width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--ink); text-align: left; cursor: pointer; font-weight: 700; }
+.dr-hits button:hover { background: var(--seg); }
+.dr-hits small { color: var(--sec); font-weight: 500; margin-left: 4px; }
+.dr-total { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--seg); font-size: 13px; }
+.dr-total b { font-size: 16px; margin-left: 6px; }
+.dr-actions { display: flex; gap: 8px; }
+.dr-actions .btn { height: 42px; flex: 1 1 auto; justify-content: center; font-size: 15px; }
+.dr-recs { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.dr-recs li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 10px 12px; border-radius: 12px; background: var(--seg); }
+.dr-rec-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; flex: 1 1 200px; }
+.dr-rec-num { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; }
+.dr-rec-btns { display: flex; gap: 4px; margin-left: auto; }
+.dr-kind { padding: 1px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 800; background: var(--seg-on); }
+.dr-kind.k-buy { color: var(--up); }
+.dr-kind.k-sell { color: var(--dn); }
+.dr-accts { display: flex; flex-direction: column; gap: 12px; }
+.dr-accts p { margin: 0; }
+.dr-inline { display: flex; gap: 6px; align-items: center; width: 100%; }
+.dr-inline .in { flex: 1 1 auto; }

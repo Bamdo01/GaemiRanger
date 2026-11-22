@@ -163,7 +163,10 @@ def holdings(account: str, quotes: dict) -> dict:
                 "price": price * rate,
                 "prev": prev * rate,
                 "sellable": 0,
-                "accounts": [{"name": names.get(a, a), "qty": q} for a, q in p.get("accounts", {}).items()],
+                "currency": p["currency"],
+                "rawPrice": price,  # 원래 통화의 현재가 (화면에서 고칠 때)
+                "manualPrice": p["asset"] != "kr",
+                "accounts": [{"id": a, "name": names.get(a, a), "qty": q} for a, q in p.get("accounts", {}).items()],
             }
         )
     for v in res["values"]:
@@ -182,12 +185,13 @@ def holdings(account: str, quotes: dict) -> dict:
                     "price": v["amount"] * rate,
                     "prev": v["amount"] * rate,
                     "sellable": 0,
-                    "accounts": [{"name": names.get(v["account"], v["account"]), "qty": 1}],
+                    "currency": v["currency"],
+                    "accounts": [{"id": v["account"], "name": names.get(v["account"], v["account"]), "qty": 1}],
                 }
             )
     realized = sum(p["realized"] * (fx if p["currency"] == "USD" else 1) for p in res["pos"].values())
     dividends = sum(r["amount"] * (fx if r["currency"] == "USD" else 1) for r in res["divs"])
-    return {"holdings": out, "cash": cash, "realized": realized, "dividends": dividends, "fxDefault": fx_default and any(r["currency"] == "USD" for r in recs)}
+    return {"holdings": out, "cash": cash, "realized": realized, "dividends": dividends, "fx": fx, "usesUsd": any(r["currency"] == "USD" for r in d["records"]), "fxDefault": fx_default and any(r["currency"] == "USD" for r in recs)}
 
 
 # ---------- 바꾸기 ----------

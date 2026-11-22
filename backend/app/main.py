@@ -161,10 +161,10 @@ def get_portfolio(account: str = "all"):
             raise HTTPException(503, detail={"code": "LOADING", "msg": f"잔고를 아직 못 받았습니다 ({kis.last_error})" if kis.last_error else "잔고를 처음 받아 오는 중입니다"})
         for h in market.balance["holdings"]:
             q = market.quotes.get(h["code"], {})
-            hs[h["code"]] = {**h, "asset": "kr", "price": q.get("price") or h["price"], "prev": q.get("prev") or h["price"], "accounts": [{"name": config.KIS_ACCOUNT_NAME, "qty": h["qty"]}]}
+            hs[h["code"]] = {**h, "asset": "kr", "price": q.get("price") or h["price"], "prev": q.get("prev") or h["price"], "accounts": [{"id": "kis", "name": config.KIS_ACCOUNT_NAME, "qty": h["qty"]}]}
         cash += market.balance["cash"]
         at = market.balance["at"]
-    m = ledger.holdings("all" if account in ("all", "kis") else account, market.quotes) if account != "kis" else {"holdings": [], "cash": 0, "realized": 0, "dividends": 0, "fxDefault": False}
+    m = ledger.holdings("all" if account in ("all", "kis") else account, market.quotes) if account != "kis" else {"holdings": [], "cash": 0, "realized": 0, "dividends": 0, "fx": 0, "usesUsd": False, "fxDefault": False}
     for h in m["holdings"]:
         old = hs.get(h["code"])
         if old:  # 같은 종목이 한투와 수기 계좌에 다 있으면 한 줄로 (평균단가는 수량 가중)
@@ -173,7 +173,7 @@ def get_portfolio(account: str = "all"):
         else:
             hs[h["code"]] = h
     cash += m["cash"]
-    return {"holdings": list(hs.values()), "cash": cash, "at": at, "accounts": accounts, "realized": m["realized"], "dividends": m["dividends"], "fxDefault": m["fxDefault"]}
+    return {"holdings": list(hs.values()), "cash": cash, "at": at, "accounts": accounts, "realized": m["realized"], "dividends": m["dividends"], "fx": m["fx"], "usesUsd": m["usesUsd"], "fxDefault": m["fxDefault"]}
 
 
 # ---------- 수기 자산 ----------

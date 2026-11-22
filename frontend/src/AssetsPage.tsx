@@ -1,10 +1,11 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AiReview from './AiReview';
 import Heatmap, { Legend, type Tile } from './Heatmap';
 import { useMarket } from './hooks';
 import { arrow, changeText, fmt, kstTime, signed, tone, type Palette } from './lib';
-import Ledger from './Ledger';
+import { put, refreshAll } from './api';
+import LedgerDrawer, { type Candidate, type Prefill } from './LedgerDrawer';
 import { checksOf, qtyText, usePortfolio, type Portfolio, type Row } from './portfolio';
 import { Seg, type Opt } from './Pickers';
 
@@ -37,6 +38,22 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
   const goStock = (c: string) => /^\d{6}$/.test(c) && navigate(`/stock/${c}`);
 
   const tiles = useMemo(() => tilesOf(port, colorBy), [port, colorBy]);
+  // 기록 서랍 (null 이면 닫힘)
+  const [drawer, setDrawer] = useState<Prefill | null>(null);
+  const closeDrawer = useCallback(() => setDrawer(null), []);
+  const candidates = useMemo<Candidate[]>(() => {
+    const m = new Map<string, string>();
+    stocks.forEach((s) => m.set(s.code, s.name));
+    port.rows.filter((r) => r.asset === 'kr').forEach((r) => m.set(r.code, r.s.name));
+    return [...m].map(([code, name]) => ({ code, name }));
+  }, [stocks, port.rows]);
+  const manualAccounts = port.accounts.filter((a) => !a.linked);
+  /** 표의 [＋]: 그 종목·계좌로 채워서 연다 */
+  const addFor = (r: Row) => {
+    const acc = r.accounts.find((a) => a.id !== 'kis')?.id ?? manualAccounts[0]?.id;
+    if (r.asset === 'etc') return setDrawer({ kind: 'value', asset: 'etc', account: acc, name: r.s.name });
+    setDrawer({ kind: 'buy', asset: r.asset, account: acc, symbol: r.asset === 'kr' ? r.code : r.code.split(':')[1], name: r.s.name });
+  };
 
   if (!port.loaded)
     return (
@@ -73,9 +90,14 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
               </option>
             ))}
           </select>
-          {port.fxDefault && <span className="o-warn">환율을 넣지 않아 1달러 = 1,400원으로 계산 중입니다. 아래 거래 기록에서 환율을 넣어 주세요.</span>}
+          {port.usesUsd && <FxChip fx={port.fx} isDefault={port.fxDefault} />}
+          <span className="grow" />
+          <button type="button" className="btn pri" onClick={() => setDrawer({})} aria-haspopup="dialog">
+            ＋ 기록
+          </button>
         </div>
       )}
+      <LedgerDrawer open={drawer !== null} prefill={drawer} onClose={closeDrawer} candidates={candidates} />
       <section className="summary" aria-label="내 자산 요약">
         <div className="sum-item">
           <span className="sum-k">총자산</span>
@@ -137,14 +159,22 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
         </section>
 
         <div className="as-side">
+          {live && manualAccounts.length === 0 && (
+            <section className="card start-card" aria-labelledby="h-start">
+              <h2 id="h-start">다른 자산도 합쳐 보기</h2>
+              <p className="sub">다른 증권사, 해외주식, 코인, 예금처럼 한투와 연동되지 않는 자산을 기록하면 이 화면 합계에 같이 들어갑니다.</p>
+              <button type="button" className="btn pri" onClick={() => setDrawer({ tab: 'accounts' })}>
+                첫 계좌 만들기
+              </button>
+            </section>
+          )}
           {has && <Checks port={port} kospiPct={kospiPct} />}
           <Weights port={port} />
           {has && <AiReview port={port} kospiPct={kospiPct} />}
         </div>
       </div>
 
-      {has && <HoldTable port={port} onPick={goStock} />}
-      {live && <Ledger />}
+      {has && <HoldTable port={port} onPick={goStock} onAdd={live ? addFor : undefined} />}
     </div>
   );
 }
@@ -285,7 +315,7 @@ const COLS: Col[] = [
   { key: 'weight', label: '비중', get: (r) => r.weight, show: (r) => `${r.weight.toFixed(1)}%`, num: true },
 ];
 
-function HoldTable({ port, onPick }: { port: Portfolio; onPick: (c: string) => void }) {
+function HoldTable({ port, onPick, onAdd }: { port: Portfolio; onPick: (c: string) => void; onAdd?: (r: Row) => void }) {
   const [sort, setSort] = useState<{ key: string; desc: boolean }>({ key: 'amt', desc: true });
   const col = COLS.find((c) => c.key === sort.key)!;
   const maxAbs = Math.max(1, ...port.rows.map((r) => Math.abs(r.pnl)));
@@ -313,6 +343,7 @@ function HoldTable({ port, onPick }: { port: Portfolio; onPick: (c: string) => v
                   </button>
                 </th>
               ))}
+              {onAdd && <th aria-label="기록" />}
             </tr>
           </thead>
           <tbody>
@@ -328,11 +359,20 @@ function HoldTable({ port, onPick }: { port: Portfolio; onPick: (c: string) => v
                       <span className="tname">
                         {r.s.name} <small>{r.s.sector}</small>
                       </span>
+                    ) : c.key === 'price' && r.manualPrice && onAdd ? (
+                      <PriceCell r={r} />
                     ) : (
                       c.show(r, maxAbs)
                     )}
                   </td>
                 ))}
+                {onAdd && (
+                  <td className="num">
+                    <button type="button" className="btn sm add-btn" onClick={() => onAdd(r)} aria-label={`${r.s.name} 기록 추가`} title="이 종목 기록 추가">
+                      ＋
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -341,7 +381,7 @@ function HoldTable({ port, onPick }: { port: Portfolio; onPick: (c: string) => v
               <td>현금</td>
               <td colSpan={3} />
               <td className="num">{fmt(port.cash)}</td>
-              <td colSpan={4} />
+              <td colSpan={onAdd ? 5 : 4} />
             </tr>
             <tr className="total">
               <td>합계</td>
@@ -357,10 +397,81 @@ function HoldTable({ port, onPick }: { port: Portfolio; onPick: (c: string) => v
                 <span className={tone(port.todayPnl)}>{changeText(port.todayPct)}</span>
               </td>
               <td className="num">100%</td>
+              {onAdd && <td />}
             </tr>
           </tfoot>
         </table>
       </div>
     </section>
+  );
+}
+
+/** 환율 칩: 눌러서 바로 고친다 */
+function FxChip({ fx, isDefault }: { fx: number; isDefault: boolean }) {
+  const [edit, setEdit] = useState<string | null>(null);
+  const [err, setErr] = useState('');
+  if (edit === null)
+    return (
+      <button type="button" className={`chip fx-chip${isDefault ? ' warn' : ''}`} onClick={() => setEdit(String(fx))} title="눌러서 환율 고치기">
+        1달러 {fmt(fx)}원{isDefault ? ' (기본값, 눌러서 넣기)' : ''} ✎
+      </button>
+    );
+  return (
+    <form
+      className="fx-chip-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        try {
+          await put('/api/ledger/fx', { value: Number(edit) });
+          refreshAll();
+          setEdit(null);
+          setErr('');
+        } catch (e2) {
+          setErr(e2 instanceof Error ? e2.message : String(e2));
+        }
+      }}
+    >
+      1달러 = <input className="in sm" inputMode="decimal" value={edit} onChange={(e) => setEdit(e.target.value)} aria-label="원/달러 환율" autoFocus />원
+      <button type="submit" className="btn sm">
+        저장
+      </button>
+      <button type="button" className="btn sm" onClick={() => setEdit(null)}>
+        취소
+      </button>
+      {err && <span className="o-warn">{err}</span>}
+    </form>
+  );
+}
+
+/** 해외주식·코인 현재가: 표에서 눌러 바로 고친다 (원래 통화로) */
+function PriceCell({ r }: { r: Row }) {
+  const [edit, setEdit] = useState<string | null>(null);
+  const usd = r.currency === 'USD';
+  if (edit === null)
+    return (
+      <button type="button" className="price-edit" onClick={() => setEdit(String(r.rawPrice))} title="눌러서 현재가 고치기">
+        {fmt(r.s.price)}
+        {usd && <small> ${r.rawPrice.toLocaleString('en-US', { maximumFractionDigits: 4 })}</small>} ✎
+      </button>
+    );
+  return (
+    <form
+      className="price-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        try {
+          await put('/api/ledger/price', { key: r.code, price: Number(edit) });
+          refreshAll();
+          setEdit(null);
+        } catch (e2) {
+          window.alert(e2 instanceof Error ? e2.message : String(e2));
+        }
+      }}
+    >
+      <input className="in sm" inputMode="decimal" value={edit} onChange={(e) => setEdit(e.target.value)} aria-label={`${r.s.name} 현재가 (${usd ? '달러' : '원'})`} autoFocus onBlur={(e) => !e.currentTarget.form?.contains(e.relatedTarget as Node) && setEdit(null)} />
+      <button type="submit" className="btn sm">
+        저장
+      </button>
+    </form>
   );
 }

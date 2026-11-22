@@ -38,7 +38,7 @@ export function useMarket(): { status: MarketStatus; stocks: Stock[]; indices: I
   return { status, stocks, indices, at, live: false, error: '' };
 }
 
-type PortfolioRes = { holdings: Holding[]; cash: number; accounts: Account[]; realized: number; dividends: number; fxDefault: boolean };
+type PortfolioRes = { holdings: Holding[]; cash: number; accounts: Account[]; realized: number; dividends: number; fx: number; usesUsd: boolean; fxDefault: boolean };
 export type HoldingsState = PortfolioRes & { live: boolean; loaded: boolean; error: string };
 
 /** 내 자산 = 한투(연동) + 수기 계좌. account 는 all 또는 계좌 id. 서버가 없으면 예시 */
@@ -52,12 +52,14 @@ export function useHoldings(account = 'all'): HoldingsState {
       accounts: srv.data?.accounts ?? [],
       realized: srv.data?.realized ?? 0,
       dividends: srv.data?.dividends ?? 0,
+      fx: srv.data?.fx ?? 0,
+      usesUsd: !!srv.data?.usesUsd,
       fxDefault: !!srv.data?.fxDefault,
       live: true,
       loaded: !!srv.data,
       error: srv.error,
     };
-  return { holdings: HOLDINGS, cash: CASH, accounts: [], realized: 0, dividends: 0, fxDefault: false, live: false, loaded: true, error: '' };
+  return { holdings: HOLDINGS, cash: CASH, accounts: [], realized: 0, dividends: 0, fx: 0, usesUsd: false, fxDefault: false, live: false, loaded: true, error: '' };
 }
 function jitterStock(s: Stock): Stock {
   const raw = s.price * (1 + (Math.random() - 0.5) * 0.006);

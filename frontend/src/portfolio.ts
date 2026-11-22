@@ -24,7 +24,10 @@ export type Row = {
   sellable: number;
   /** kr 국내주식, us 해외주식, coin 코인, etc 기타 */
   asset: string;
-  accounts: { name: string; qty: number }[];
+  accounts: { id: string; name: string; qty: number }[];
+  currency: string;
+  rawPrice: number;
+  manualPrice: boolean;
 };
 
 /** 수량 글자: 코인·해외는 소수까지, 단위는 주/개 */
@@ -33,7 +36,7 @@ export const qtyText = (r: { qty: number; asset: string }) =>
 
 /** 지금 시세로 계산한 내 자산 */
 export function usePortfolio(stocks: Stock[], account = 'all') {
-  const { holdings, cash, loaded, error, accounts, realized, dividends, fxDefault } = useHoldings(account);
+  const { holdings, cash, loaded, error, accounts, realized, dividends, fx, usesUsd, fxDefault } = useHoldings(account);
   return useMemo(() => {
     const by = new Map(stocks.map((s) => [s.code, s]));
     const base = holdings.map((h) => {
@@ -48,6 +51,9 @@ export function usePortfolio(stocks: Stock[], account = 'all') {
         sellable: h.sellable ?? h.qty,
         asset: h.asset ?? 'kr',
         accounts: h.accounts ?? [],
+        currency: h.currency ?? 'KRW',
+        rawPrice: h.rawPrice ?? s.price,
+        manualPrice: !!h.manualPrice,
         s,
         amt,
         pnl: amt - h.qty * h.avg,
@@ -67,6 +73,8 @@ export function usePortfolio(stocks: Stock[], account = 'all') {
       accounts,
       realized,
       dividends,
+      fx,
+      usesUsd,
       fxDefault,
       cash,
       stockValue,
@@ -77,7 +85,7 @@ export function usePortfolio(stocks: Stock[], account = 'all') {
       todayPnl,
       todayPct: stockValue - todayPnl ? (todayPnl / (stockValue - todayPnl)) * 100 : 0,
     };
-  }, [stocks, holdings, cash, loaded, error, accounts, realized, dividends, fxDefault]);
+  }, [stocks, holdings, cash, loaded, error, accounts, realized, dividends, fx, usesUsd, fxDefault]);
 }
 export type Portfolio = ReturnType<typeof usePortfolio>;
 
