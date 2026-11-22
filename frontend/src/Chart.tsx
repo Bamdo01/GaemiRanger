@@ -84,6 +84,7 @@ export default function Chart({ candles, label }: { candles: Candle[]; label: st
             })}
         </div>
       )}
+      {!candles.length && <p className="sub">차트를 받는 중…</p>}
       {g && (
         <svg
           width={w}

@@ -7,7 +7,6 @@
 
 import asyncio
 import functools
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import auth, config, market, orders, telegram
-from .kis import KISError, kis
+from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
 
@@ -32,6 +31,26 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="GaemiRanger", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+
+
+class UrgentApi:
+    """화면이 부른 /api 요청 안의 한투 호출은 백그라운드 갱신보다 먼저 보낸다"""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith("/api/"):
+            tok = URGENT.set(True)
+            try:
+                await self.inner(scope, receive, send)
+            finally:
+                URGENT.reset(tok)
+        else:
+            await self.inner(scope, receive, send)
+
+
+app.add_middleware(UrgentApi)
 
 
 @app.middleware("http")
@@ -143,10 +162,7 @@ def get_portfolio():
 async def get_stock(code: str):
     if not code.isdigit() or len(code) != 6:
         raise HTTPException(400, "종목코드는 6자리 숫자입니다")
-    q = market.quotes.get(code)
-    if not q or time.time() - q["at"] > 5:
-        q = await market.fetch_quote(code)
-    return q
+    return await market.quote_fast(code)
 
 
 @app.get("/api/stock/{code}/candles", dependencies=api + [Depends(need_kis)])

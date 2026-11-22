@@ -40,7 +40,8 @@ export default function StockPage() {
   const { stocks, status, at, live } = useMarket();
   const port = usePortfolio(stocks);
   const detail = usePoll<Stock>(live && /^\d{6}$/.test(code) ? `/api/stock/${code}` : null, 5000);
-  const s = live ? detail.data ?? undefined : stocks.find((x) => x.code === code);
+  // 서버 응답 전에는 시장 화면에서 받아 둔 시세로 먼저 그린다 (한투 호출은 초당 1건이라 기다리지 않게)
+  const s = (live ? detail.data : undefined) ?? stocks.find((x) => x.code === code);
   const [watch, setWatch] = useState<string[]>(() => load(WATCH_KEY, HOLDINGS.map((h) => h.code)));
   useEffect(() => save(WATCH_KEY, watch), [watch]);
   useEffect(() => {

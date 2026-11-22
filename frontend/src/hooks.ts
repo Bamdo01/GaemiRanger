@@ -52,25 +52,11 @@ function jitterStock(s: Stock): Stock {
   return { ...s, price };
 }
 
-/** 고른 팔레트. 처음에는 시스템이 다크 모드면 밤하늘, 아니면 크림. */
-export function usePalette(): [Palette, (p: Palette) => void] {
-  const [palette, setPalette] = useState<Palette>(() => {
-    try {
-      const v = localStorage.getItem('gaemiranger.palette');
-      if (v === 'cream' || v === 'white' || v === 'night') return v;
-    } catch {
-      /* 저장소를 못 쓰면 시스템 설정을 따른다 */
-    }
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'night' : 'cream';
-  });
+/** 팔레트는 밤하늘로 고정 (2026-11-22 사용자: 바꾸지 못하게). 크림·화이트 색 정의는 styles.css 에 남겨 둠 */
+export function usePalette(): Palette {
   useEffect(() => {
-    document.documentElement.dataset.palette = palette;
-    try {
-      localStorage.setItem('gaemiranger.palette', palette);
-    } catch {
-      /* 무시 */
-    }
-  }, [palette]);
-  return [palette, setPalette];
+    document.documentElement.dataset.palette = 'night';
+  }, []);
+  return 'night';
 }
 

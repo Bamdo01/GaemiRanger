@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import contextvars
 import json
 import time
 from datetime import datetime
@@ -15,6 +16,9 @@ import httpx
 from . import config
 
 TOKEN_FILE = config.DATA / "kis_token.json"
+
+# 화면이 기다리는 호출은 urgent. 백그라운드 갱신(시장 순회)보다 먼저 줄을 선다
+URGENT: contextvars.ContextVar[bool] = contextvars.ContextVar("kis_urgent", default=False)
 
 
 class KISError(Exception):
@@ -31,6 +35,7 @@ class KIS:
         self._token_lock = asyncio.Lock()
         self._rate_lock = asyncio.Lock()
         self._last_call = 0.0
+        self._urgent_waiting = 0
         self.last_ok: float = 0
         self.last_error: str = ""
         self._load_token()
@@ -63,11 +68,21 @@ class KIS:
 
     # ---------- 호출 ----------
     async def _wait_rate(self) -> None:
-        async with self._rate_lock:
-            gap = 1 / config.KIS_RPS - (time.monotonic() - self._last_call)
-            if gap > 0:
-                await asyncio.sleep(gap)
-            self._last_call = time.monotonic()
+        urgent = URGENT.get()
+        if urgent:
+            self._urgent_waiting += 1
+        try:
+            # 급한 호출이 기다리는 동안 백그라운드 호출은 양보한다
+            while not urgent and self._urgent_waiting:
+                await asyncio.sleep(0.05)
+            async with self._rate_lock:
+                gap = 1 / config.KIS_RPS - (time.monotonic() - self._last_call)
+                if gap > 0:
+                    await asyncio.sleep(gap)
+                self._last_call = time.monotonic()
+        finally:
+            if urgent:
+                self._urgent_waiting -= 1
 
     async def call(self, method: str, path: str, tr_id: str, params: dict | None = None, body: dict | None = None, tr_cont: str = "") -> dict:
         if not config.kis_configured():

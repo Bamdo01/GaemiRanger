@@ -5,11 +5,12 @@
 """
 
 import asyncio
+import contextvars
 import time
 from datetime import date, datetime, timedelta, timezone
 
 from . import config
-from .kis import KISError, kis
+from .kis import URGENT, KISError, kis
 from .universe import NAMES, SECTORS, UNIVERSE
 
 KST = timezone(timedelta(hours=9))  # 한국은 서머타임이 없어 고정 +9
@@ -157,35 +158,89 @@ async def fetch_book(code: str) -> dict:
     return {"asks": [a for a in asks if a["p"]], "bids": [b for b in bids if b["p"]], "at": time.time()}
 
 
+_bg: set[str] = set()  # 뒤에서 받고 있는 것 (같은 것을 두 번 받지 않게)
+
+
+def _later(key: str, coro) -> None:
+    """화면을 기다리게 하지 않고 뒤에서 받는다 (백그라운드 순서)"""
+    if key in _bg:
+        coro.close()
+        return
+    _bg.add(key)
+
+    async def run() -> None:
+        try:
+            await coro
+        except Exception:  # noqa: BLE001 - 실패는 kis.last_error 에 남고 다음 요청 때 다시
+            pass
+        finally:
+            _bg.discard(key)
+
+    ctx = contextvars.copy_context()
+    ctx.run(URGENT.set, False)
+    asyncio.get_running_loop().create_task(run(), context=ctx)
+
+
+async def quote_fast(code: str) -> dict:
+    """받아 둔 시세가 있으면 바로 돌려주고, 5초 넘게 묵었으면 뒤에서 새로 받는다"""
+    q = quotes.get(code)
+    if q is None:
+        return await fetch_quote(code)
+    if time.time() - q["at"] > 5:
+        _later(f"q:{code}", fetch_quote(code))
+    return q
+
+
+_SPANS = {"D": [(140, 0), (280, 141), (400, 281)], "W": [(700, 0)], "M": [(3000, 0)]}
+
+
+async def _candle_span(code: str, period: str, back_from: int, back_to: int) -> dict[str, dict]:
+    today = date.today()
+    d = await kis.get(
+        DAILY,
+        "FHKST03010100",
+        {
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": code,
+            "FID_INPUT_DATE_1": (today - timedelta(days=back_from)).strftime("%Y%m%d"),
+            "FID_INPUT_DATE_2": (today - timedelta(days=back_to)).strftime("%Y%m%d"),
+            "FID_PERIOD_DIV_CODE": period,
+            "FID_ORG_ADJ_PRC": "0",
+        },
+    )
+    out: dict[str, dict] = {}
+    for r in d.get("output2") or []:
+        t = r.get("stck_bsop_date")
+        if not t or not _i(r.get("stck_clpr")):
+            continue
+        out[t] = {"t": f"{t[:4]}-{t[4:6]}-{t[6:]}", "o": _i(r.get("stck_oprc")), "h": _i(r.get("stck_hgpr")), "l": _i(r.get("stck_lwpr")), "c": _i(r.get("stck_clpr")), "v": _i(r.get("acml_vol"))}
+    return out
+
+
+async def _candle_rest(code: str, period: str, first: dict[str, dict]) -> None:
+    out = dict(first)
+    for back_from, back_to in _SPANS[period][1:]:
+        out.update(await _candle_span(code, period, back_from, back_to))
+    _candles[(code, period)] = (time.time(), [out[k] for k in sorted(out)])
+
+
 async def fetch_candles(code: str, period: str) -> list:
-    """일(D)·주(W)·월(M)봉. 한 번에 100개라 일봉은 기간을 나눠 받는다. 10분 캐시"""
+    """일(D)·주(W)·월(M)봉. 한 번에 100개라 일봉은 기간을 나눠 받는다. 10분 캐시.
+    처음에는 가장 최근 기간만 받아 바로 돌려주고, 지난 기간은 뒤에서 채운다 (화면은 1분마다 다시 물음)"""
     key = (code, period)
     hit = _candles.get(key)
     if hit and time.time() - hit[0] < 600:
         return hit[1]
-    today = date.today()
-    spans = {"D": [(140, 0), (280, 141), (400, 281)], "W": [(700, 0)], "M": [(3000, 0)]}[period]
-    out: dict[str, dict] = {}
-    for back_from, back_to in spans:
-        d = await kis.get(
-            DAILY,
-            "FHKST03010100",
-            {
-                "FID_COND_MRKT_DIV_CODE": "J",
-                "FID_INPUT_ISCD": code,
-                "FID_INPUT_DATE_1": (today - timedelta(days=back_from)).strftime("%Y%m%d"),
-                "FID_INPUT_DATE_2": (today - timedelta(days=back_to)).strftime("%Y%m%d"),
-                "FID_PERIOD_DIV_CODE": period,
-                "FID_ORG_ADJ_PRC": "0",
-            },
-        )
-        for r in d.get("output2") or []:
-            t = r.get("stck_bsop_date")
-            if not t or not _i(r.get("stck_clpr")):
-                continue
-            out[t] = {"t": f"{t[:4]}-{t[4:6]}-{t[6:]}", "o": _i(r.get("stck_oprc")), "h": _i(r.get("stck_hgpr")), "l": _i(r.get("stck_lwpr")), "c": _i(r.get("stck_clpr")), "v": _i(r.get("acml_vol"))}
+    back_from, back_to = _SPANS[period][0]
+    out = await _candle_span(code, period, back_from, back_to)
+    if hit:  # 묵은 캐시가 있으면 지난 기간은 그것으로 채워 둔다
+        out = {**{c["t"].replace("-", ""): c for c in hit[1]}, **out}
     rows = [out[k] for k in sorted(out)]
-    _candles[key] = (time.time(), rows)
+    if len(_SPANS[period]) > 1:
+        _candles[key] = (time.time() - 600, rows)  # 아직 덜 찼으니 다음 요청 때 캐시로 끝내지 않게
+        _later(f"c:{code}:{period}", _candle_rest(code, period, out))
+    else:
+        _candles[key] = (time.time(), rows)
     return rows
 
 
