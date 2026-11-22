@@ -27,9 +27,9 @@ const HEAD = 30;
 const PAD = 6;
 const GAP = 5;
 
-type Props = { tiles: Tile[]; palette: Palette; label: string; onPick: (id: string) => void };
+type Props = { tiles: Tile[]; palette: Palette; label: string; onPick: (id: string) => void; scale?: number };
 
-export default function Heatmap({ tiles, palette, label, onPick }: Props) {
+export default function Heatmap({ tiles, palette, label, onPick, scale = 3 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [tip, setTip] = useState<{ t: Tile; x: number; y: number } | null>(null);
@@ -62,7 +62,7 @@ export default function Heatmap({ tiles, palette, label, onPick }: Props) {
       {L.tiles.map((t) => {
         const w = Math.max(0, t.w - GAP);
         const h = Math.max(0, t.h - GAP);
-        const c = t.color ? { bg: t.color, ink: 'var(--ink)' } : heatColor(t.pct, palette);
+        const c = t.color ? { bg: t.color, ink: 'var(--ink)' } : heatColor(t.pct, palette, scale);
         const fs = Math.max(11, Math.min(28, w / (t.name.length * 0.95 + 1.2), h / 3.4));
         const ps = Math.max(11, fs * 0.62);
         const showName = w > 40 && h > 24;
@@ -165,19 +165,20 @@ function layout(tiles: Tile[], W: number, H: number): { groups: PlacedGroup[]; t
   return out;
 }
 
-export function Legend({ palette }: { palette: Palette }) {
+export function Legend({ palette, scale = 3, low = '▼ 하락', high = '상승 ▲' }: { palette: Palette; scale?: number; low?: string; high?: string }) {
   return (
     <div className="legend" aria-label="범례">
-      <span>▼ 하락</span>
-      {[-3, -2, -1, 0, 1, 2, 3].map((s) => {
-        const c = heatColor(s, palette);
+      <span>{low}</span>
+      {[-3, -2, -1, 0, 1, 2, 3].map((k) => {
+        const s = (k * scale) / 3;
+        const c = heatColor(s, palette, scale);
         return (
           <span key={s} className="lg-step" style={{ background: c.bg, color: c.ink }}>
             {s === 0 ? '0' : `${s > 0 ? '+' : ''}${s}%`}
           </span>
         );
       })}
-      <span>상승 ▲</span>
+      <span>{high}</span>
     </div>
   );
 }

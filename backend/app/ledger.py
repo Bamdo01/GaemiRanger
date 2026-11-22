@@ -177,8 +177,10 @@ def holdings(account: str, quotes: dict) -> dict:
             continue
         rate = fx if p["currency"] == "USD" else 1.0
         auto = None
+        fallback = False  # 시세를 아직 못 받아 마지막 거래 단가 등으로 임시 계산 중
         if p["asset"] == "kr":
             q = quotes.get(p["symbol"]) or {}
+            fallback = not q.get("price")
             price, prev = q.get("price") or p["last"], q.get("prev") or q.get("price") or p["last"]
             sector = q.get("sector") or "기타"
         else:
@@ -192,6 +194,7 @@ def holdings(account: str, quotes: dict) -> dict:
             else:
                 mp = d["prices"].get(p["key"], {}).get("price")
                 price = prev = mp or p["last"]
+                fallback = True
         out.append(
             {
                 "code": p["key"],
@@ -206,6 +209,7 @@ def holdings(account: str, quotes: dict) -> dict:
                 "currency": p["currency"],
                 "rawPrice": price,  # 원래 통화의 현재가 (화면에서 고칠 때)
                 "manualPrice": p["asset"] != "kr" and not auto,
+                "fallback": fallback,
                 "accounts": [{"id": a, "name": names.get(a, a), "qty": q} for a, q in p.get("accounts", {}).items()],
             }
         )

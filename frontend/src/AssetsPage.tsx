@@ -142,7 +142,10 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
       <div className="as-main">
         <section className="card as-heat" aria-labelledby="h-heat">
           <div className="card-head">
-            <h2 id="h-heat">보유 종목과 현금</h2>
+            <h2 id="h-heat">
+              보유 종목 · {colorBy === 'profit' ? '내 수익률' : '오늘 등락률'}
+              <small className="sub"> {colorBy === 'profit' ? '산 가격 대비' : '어제 종가 대비'}</small>
+            </h2>
             <div className="toolbar">
               <Seg id="칸에 보여 줄 값" label="" list={SHOW} cur={colorBy} onPick={(v) => setParam('show', v, SHOW)} />
             </div>
@@ -156,9 +159,9 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
             </p>
           )}
           <div className="as-map">
-            <Heatmap tiles={tiles} palette={palette} label="보유 종목과 현금 히트맵" onPick={goStock} />
+            <Heatmap tiles={tiles} palette={palette} label={`보유 종목 히트맵, ${colorBy === 'profit' ? '내 수익률' : '오늘 등락률'}`} onPick={goStock} scale={colorBy === 'profit' ? 30 : 3} />
           </div>
-          <Legend palette={palette} />
+          {colorBy === 'profit' ? <Legend palette={palette} scale={30} low="▼ 손실" high="이익 ▲" /> : <Legend palette={palette} />}
         </section>
 
         <div className="as-side">
@@ -204,21 +207,29 @@ function tilesOf(port: Portfolio, colorBy: string, flash: Record<string, 'up' | 
     size: r.amt,
     pct: colorBy === 'profit' ? r.profit : r.today,
     name: r.s.name,
-    extra: `${fmt(r.amt)}원 · ${of(r.amt)}%`,
+    // 고른 값 하나에만 집중 (2026-11-23 사용자: 두 값이 같이 보여 보기 힘듦). 셋째 줄도 그 값의 원 단위
+    extra: colorBy === 'profit' ? `${signed(r.pnl)}원` : `오늘 ${signed(r.todayPnl)}원`,
     static: r.asset !== 'kr',
     flash: flash[r.code],
-    tip: [
-      ['수량', qtyText(r)],
-      ...r.accounts.map((a): [string, string] => [a.name, qtyText({ qty: a.qty, asset: r.asset })]),
-      ['평균단가', `${fmt(r.avg)}원`],
-      ['현재가', `${fmt(r.s.price)}원`],
-      ['평가금액', `${fmt(r.amt)}원`],
-      ['평가손익', `${arrow(r.pnl)} ${signed(r.pnl)}원`],
-      ['내 수익률', changeText(r.profit)],
-      ['오늘 등락률', changeText(r.today)],
-      ['총자산 중', `${of(r.amt)}%`],
-      ['투자 중', `${r.weight.toFixed(1)}%`],
-    ],
+    tip:
+      colorBy === 'profit'
+        ? [
+            ['내 수익률', changeText(r.profit)],
+            ['평가손익', `${arrow(r.pnl)} ${signed(r.pnl)}원`],
+            ['평균단가', `${fmt(r.avg)}원`],
+            ['현재가', `${fmt(r.s.price)}원`],
+            ['수량', qtyText(r)],
+            ...r.accounts.map((a): [string, string] => [`  ${a.name}`, qtyText({ qty: a.qty, asset: r.asset })]),
+            ['평가금액', `${fmt(r.amt)}원 (총자산 중 ${of(r.amt)}%)`],
+          ]
+        : [
+            ['오늘 등락률', changeText(r.today)],
+            ['오늘 손익', `${arrow(r.todayPnl)} ${signed(r.todayPnl)}원`],
+            ['현재가', `${fmt(r.s.price)}원`],
+            ['어제 종가', `${fmt(r.s.prev)}원`],
+            ['수량', qtyText(r)],
+            ['평가금액', `${fmt(r.amt)}원 (총자산 중 ${of(r.amt)}%)`],
+          ],
   }));
   if (port.cash <= 0) return stocks;
   const cash: Tile = {
@@ -227,8 +238,7 @@ function tilesOf(port: Portfolio, colorBy: string, flash: Record<string, 'up' | 
     size: port.cash,
     pct: 0,
     name: '현금',
-    label: `${of(port.cash)}%`,
-    extra: `${fmt(port.cash)}원`,
+    label: `${fmt(port.cash)}원`,
     color: 'var(--cash)',
     static: true,
     tip: [

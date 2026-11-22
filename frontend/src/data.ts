@@ -44,6 +44,8 @@ export type Holding = {
   rawPrice?: number;
   /** 현재가를 사람이 넣는 자산 (해외주식, 코인) */
   manualPrice?: boolean;
+  /** 시세를 아직 못 받아 임시 가격 (지금 움직임 계산에서 뺀다) */
+  fallback?: boolean;
 };
 export type Account = { id: string; name: string; linked: boolean };
 

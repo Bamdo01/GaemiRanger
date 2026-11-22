@@ -28,6 +28,7 @@ export type Row = {
   currency: string;
   rawPrice: number;
   manualPrice: boolean;
+  fallback: boolean;
 };
 
 /** 수량 글자: 코인·해외는 소수까지, 단위는 주/개 */
@@ -54,6 +55,7 @@ export function usePortfolio(stocks: Stock[], account = 'all') {
         currency: h.currency ?? 'KRW',
         rawPrice: h.rawPrice ?? s.price,
         manualPrice: !!h.manualPrice,
+        fallback: !!h.fallback,
         s,
         amt,
         pnl: amt - h.qty * h.avg,

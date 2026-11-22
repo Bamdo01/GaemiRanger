@@ -33,7 +33,8 @@ function useHistory(rows: Row[]) {
   const hist = useRef<Sample[]>([]);
   const t = Date.now();
   const last = hist.current[hist.current.length - 1];
-  const px = new Map(rows.map((r) => [r.code, r.s.price]));
+  // 임시 가격(시세 받기 전)은 넣지 않는다 → 시세가 처음 들어올 때 움직임으로 세지 않게
+  const px = new Map(rows.filter((r) => !r.fallback).map((r) => [r.code, r.s.price]));
   if (!last || [...px].some(([k, v]) => last.px.get(k) !== v) || t - last.t > 5000) hist.current.push({ t, px });
   hist.current = hist.current.filter((s) => t - s.t <= WINDOW + 5000);
   const base = hist.current.find((s) => t - s.t <= WINDOW) ?? hist.current[0];
@@ -44,7 +45,7 @@ export function MovesCard({ port }: { port: Portfolio }) {
   const { base, span } = useHistory(port.rows);
   const items = port.rows
     .map((r) => {
-      const p0 = base.px.get(r.code) ?? r.s.price;
+      const p0 = r.fallback ? r.s.price : base.px.get(r.code) ?? r.s.price;
       const d = r.s.price - p0;
       return { r, delta: d * r.qty, perAcct: r.accounts.map((a) => ({ name: a.name, delta: d * a.qty })) };
     })

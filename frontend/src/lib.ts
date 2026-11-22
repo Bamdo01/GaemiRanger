@@ -15,9 +15,10 @@ type RGB = [number, number, number];
 const HEAT: Record<Palette, { base: RGB; up: RGB; dn: RGB; dark: string; light: string }> = {
   night: { base: [46, 56, 82], up: [44, 172, 100], dn: [214, 76, 82], dark: '#0f1424', light: '#ffffff' },
 };
-export function heatColor(pct: number, palette: Palette): { bg: string; ink: string } {
+/** scale: 이 %에서 가장 진하다 (오늘 등락률 3, 내 수익률 30) */
+export function heatColor(pct: number, palette: Palette, scale = 3): { bg: string; ink: string } {
   const p = HEAT[palette];
-  const t = Math.max(-1, Math.min(1, pct / 3));
+  const t = Math.max(-1, Math.min(1, pct / scale));
   const a = Math.pow(Math.abs(t), 0.75);
   const to = t >= 0 ? p.up : p.dn;
   const c = p.base.map((b, i) => Math.round(b + (to[i] - b) * a)) as RGB;
