@@ -90,7 +90,7 @@ async def fetch_balance() -> dict:
     for _ in range(5):  # 연속조회 (보유 종목이 많을 때)
         d = await kis.get(
             BALANCE,
-            "VTTC8434R",
+            config.tr("VTTC8434R"),
             {
                 "CANO": config.KIS_CANO,
                 "ACNT_PRDT_CD": config.KIS_ACNT_PRDT_CD,
@@ -137,7 +137,7 @@ async def fetch_buyable(code: str, price: int, market: bool) -> int:
     """주문가능현금 (원)"""
     d = await kis.get(
         PSBL,
-        "VTTC8908R",
+        config.tr("VTTC8908R"),
         {
             "CANO": config.KIS_CANO,
             "ACNT_PRDT_CD": config.KIS_ACNT_PRDT_CD,

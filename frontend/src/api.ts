@@ -67,6 +67,12 @@ export function ServerProvider({ children }: { children: ReactNode }) {
   return createElement(ServerCtx.Provider, { value: { status, live, checked, refresh } }, children);
 }
 export const useServer = () => useContext(ServerCtx);
+/** 실전(real)인지 모의(mock)인지. 문구와 경고를 바꿀 때 */
+export function useMode() {
+  const { status } = useServer();
+  const real = status.kis?.mode === 'real';
+  return { real, name: real ? '실전' : '모의투자' };
+}
 
 const REFRESH_EVENT = 'gr-refresh';
 // 서버가 실시간 시세를 받았다고 알려 올 때 (/api/stream). live 로 등록한 usePoll 만 다시 받는다

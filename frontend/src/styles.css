@@ -502,3 +502,4 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 .login-list .up { color: var(--up); }
 .login-list .dn { color: var(--dn); }
 .set-logout { margin-top: 12px; }
+.badge.real { border-color: var(--dn); color: var(--dn); }

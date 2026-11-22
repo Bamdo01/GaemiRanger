@@ -56,7 +56,7 @@ export default function SettingsPage() {
             <h2>연결 상태</h2>
           </div>
           <dl className="kv set-kv">
-            <Row k="거래 모드" v={s.mode === 'mock' ? '모의투자 (실전 전환은 점검표를 거친 뒤에 엶)' : s.mode} />
+            <Row k="거래 모드" v={s.mode === 'mock' ? '모의투자' : '실전 (실제 돈으로 주문이 나감)'} />
             <Row k="한투 연결" v={s.kisConfigured ? '키 설정됨' : '키 없음 (backend/.env)'} ok={s.kisConfigured} />
             <Row k="실시간 (한투)" v={s.realtime.kis === 'on' ? `연결 · ${s.realtime.slots}/41자리` : s.realtime.kis} ok={s.realtime.kis === 'on'} />
             <Row k="실시간 (업비트)" v={s.realtime.upbit === 'on' ? '연결' : s.realtime.upbit === 'off' ? '가진 코인 없음' : s.realtime.upbit} ok={s.realtime.upbit !== 'off' ? s.realtime.upbit === 'on' : undefined} />

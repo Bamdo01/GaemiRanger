@@ -1,5 +1,5 @@
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useParams } from 'react-router-dom';
-import { post, useServer, useStream } from './api';
+import { post, useMode, useServer, useStream } from './api';
 import AssetsPage from './AssetsPage';
 import Login from './Login';
 import MarketPage from './MarketPage';
@@ -23,6 +23,7 @@ const MENU: [string, string][] = [
 export default function App() {
   const palette = usePalette();
   const { status, live, checked, refresh } = useServer();
+  const mode = useMode();
   if (!checked) return null;
   // 서버가 있는데 로그인 안 했으면 로그인 화면만 (계좌 정보 보호)
   if (status.server && !status.loggedIn) return <Login />;
@@ -41,8 +42,8 @@ export default function App() {
           ))}
         </nav>
         <span className="grow" />
-        <span className={`badge ${live ? 'live' : ''}`} title={status.kis?.lastError ?? undefined}>
-          {live ? '모의투자 · 한투 연결' : '모의 · 예시'}
+        <span className={`badge ${live ? 'live' : ''}${live && mode.real ? ' real' : ''}`} title={status.kis?.lastError ?? undefined}>
+          {live ? `${mode.name} · 한투 연결` : '예시 데이터'}
         </span>
         {status.server && (
           <button

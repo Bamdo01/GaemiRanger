@@ -16,7 +16,7 @@ import websockets
 
 from . import config, market, prices
 
-KIS_WS = "ws://ops.koreainvestment.com:31000"  # 모의
+KIS_WS = config.KIS_WS  # 모의 31000, 실전 21000
 UPBIT_WS = "wss://api.upbit.com/websocket/v1"
 SLOTS = 41
 # 해외 실시간 키: D + 거래소 + 티커 (모의에서 등록 확인. 지연 여부는 미국장이 열릴 때 확인)

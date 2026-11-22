@@ -110,7 +110,7 @@ export default function MarketPage({ palette }: Props) {
         <span className="grow" />
         <span className="stamp">
           {status.open ? `${kstTime(at)} 기준 · 10초마다 갱신` : status.label}
-          <em>{live ? `한투 모의 · ${stocks.length}/50종목${error ? ` · 갱신 실패: ${error}` : ''}` : '예시 데이터'}</em>
+          <em>{live ? `한투 · ${stocks.length}/50종목${error ? ` · 갱신 실패: ${error}` : ''}` : '예시 데이터'}</em>
         </span>
       </section>
 

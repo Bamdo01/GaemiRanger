@@ -152,7 +152,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
           </div>
           {!has && (
             <p className="sub">
-              보유 종목이 없습니다. 종목 페이지에서 모의 매수하면 여기에 나옵니다.{' '}
+              보유 종목이 없습니다. 종목 페이지에서 매수하거나 수기로 넣으면 여기에 나옵니다.{' '}
               <button type="button" className="link" onClick={() => navigate('/stock')}>
                 종목 보러 가기
               </button>

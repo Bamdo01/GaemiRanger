@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { del, post, put, refreshAll, usePoll, useServer } from './api';
+import { del, post, put, refreshAll, useMode, usePoll, useServer } from './api';
 import { fmt } from './lib';
 import { useMarket, useHoldings } from './hooks';
 
@@ -39,6 +39,7 @@ const STATE: Record<Rule['state'], string> = { watching: '감시 중', paused: '
 
 export default function RulesPage() {
   const { live } = useServer();
+  const mode = useMode();
   const srv = usePoll<View>(live ? '/api/rules' : null, 5000, true);
   const [sp, setSp] = useSearchParams();
   const [drawer, setDrawer] = useState<string | null>(sp.get('new'));
@@ -57,7 +58,7 @@ export default function RulesPage() {
     return (
       <div className="soon">
         <h1>규칙</h1>
-        <p>규칙은 한투 모의계좌에 연결된 서버에서만 걸 수 있습니다. 지금은 예시 화면입니다.</p>
+        <p>규칙은 한투 계좌에 연결된 서버에서만 걸 수 있습니다. 지금은 예시 화면입니다.</p>
       </div>
     );
   const v = srv.data;
@@ -214,7 +215,7 @@ export default function RulesPage() {
             </table>
           </div>
         )}
-        <p className="sub">모의투자. 주문은 장중에만 나가고, 서버가 장 시간·1회 한도·하루 횟수·매도 가능 수량·매수 가능 금액을 다시 검사합니다.</p>
+        <p className="sub">{mode.name}. 주문은 장중에만 나가고, 서버가 장 시간·1회 한도·하루 횟수·매도 가능 수량·매수 가능 금액을 다시 검사합니다.</p>
       </section>
 
       {drawer !== null && <RuleDrawer code={drawer} onClose={close} onDone={(m) => setMsg(m)} />}
@@ -286,6 +287,7 @@ function RuleDrawer({ code: initCode, onClose, onDone }: { code: string; onClose
   const [days, setDays] = useState('30');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const acctMode = useMode();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -481,7 +483,7 @@ function RuleDrawer({ code: initCode, onClose, onDone }: { code: string; onClose
           ) : (
             <p className="sub">{kind === 'buy' ? '매수 규칙은 항상 확인 후 주문입니다 (5분 안에 [주문]을 눌러야 나감)' : '주문 없이 알림만'}</p>
           )}
-          {sell && mode === 'auto' && <p className="o-warn">조건이 맞으면 확인 없이 서버가 바로 시장가로 팝니다 (모의투자).</p>}
+          {sell && mode === 'auto' && <p className="o-warn">조건이 맞으면 확인 없이 서버가 바로 시장가로 팝니다 ({acctMode.real ? '실전: 실제 돈' : '모의투자'}).</p>}
         </div>
 
         <p className="dr-total">{preview}</p>

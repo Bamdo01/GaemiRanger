@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { post, usePoll, useServer } from './api';
+import { post, useMode, usePoll, useServer } from './api';
 import Chart from './Chart';
 import { HOLDINGS, STOCKS, groupCandles, priceLimits, sampleBook, sampleDaily, sampleTrade, tickOf, type Candle, type Stock } from './data';
 import { useMarket } from './hooks';
@@ -38,6 +38,7 @@ export default function StockPage() {
   const { code = '' } = useParams();
   const navigate = useNavigate();
   const { stocks, status, at, live } = useMarket();
+  const mode = useMode();
   // 주문은 한투 계좌로만 나가므로 현금·보유 수량은 한투 계좌 것만
   const port = usePortfolio(stocks, 'kis');
   const detail = usePoll<Stock>(live && /^[0-9][0-9A-Z]{5}$/.test(code) ? `/api/stock/${code}` : null, 5000, true);
@@ -73,7 +74,7 @@ export default function StockPage() {
         <MyHolding s={s} port={port} />
       </div>
       <p className="st-foot">
-        {status.open ? `${kstTime(at)} 기준` : status.label} · {live ? '한투 모의투자 계좌 · 주문은 모의로 실제 접수됩니다' : '예시 데이터 (차트·호가·주문 모두 예시)'}
+        {status.open ? `${kstTime(at)} 기준` : status.label} · {live ? (mode.real ? '한투 실전 계좌 · 주문은 실제 돈으로 나갑니다' : '한투 모의투자 계좌 · 주문은 모의로 실제 접수됩니다') : '예시 데이터 (차트·호가·주문 모두 예시)'}
       </p>
     </div>
   );
@@ -315,6 +316,7 @@ function OrderForm({ s, live, cash, price, setPrice, heldQty }: { s: Stock; live
   const CASH = cash;
   const amount = p * qty;
   const ORDER_LIMIT = useServer().status.kis?.limits?.orderLimit ?? DEFAULT_ORDER_LIMIT;
+  const mode = useMode();
   const maxQty = side === 'buy' ? Math.floor(Math.min(CASH, ORDER_LIMIT) / p) : heldQty;
   // 주문 검사 (O4)
   const problem =
@@ -407,7 +409,7 @@ function OrderForm({ s, live, cash, price, setPrice, heldQty }: { s: Stock; live
       {done && (
         <p className="o-done" role="status">
           {done}
-          {live && done.startsWith('모의 주문 접수') && (
+          {live && done.includes('주문 접수:') && (
             <>
               {' '}
               <Link to="/order" className="link">
@@ -417,7 +419,7 @@ function OrderForm({ s, live, cash, price, setPrice, heldQty }: { s: Stock; live
           )}
         </p>
       )}
-      <p className="sub">1회 주문 한도 {won(ORDER_LIMIT)} · 모의투자{live ? ' · 서버가 한 번 더 검사합니다' : ' · 지금은 예시라 주문이 나가지 않습니다'}</p>
+      <p className="sub">1회 주문 한도 {won(ORDER_LIMIT)} · {mode.name}{live ? ' · 서버가 한 번 더 검사합니다' : ' · 지금은 예시라 주문이 나가지 않습니다'}</p>
 
       {confirm && (
         <div className="modal-back" onClick={() => setConfirm(false)}>
@@ -443,7 +445,7 @@ function OrderForm({ s, live, cash, price, setPrice, heldQty }: { s: Stock; live
                 <dd className="num">약 {fmt(amount)}원</dd>
               </div>
             </dl>
-            <p className="sub">{live ? '한투 모의투자 계좌로 주문이 나갑니다 (실제 돈은 움직이지 않음)' : '지금은 예시라 실제로 주문이 나가지 않습니다'}</p>
+            <p className="sub">{live ? (mode.real ? '한투 실전 계좌로 주문이 나갑니다. 실제 돈이 움직입니다.' : '한투 모의투자 계좌로 주문이 나갑니다 (실제 돈은 움직이지 않음)') : '지금은 예시라 실제로 주문이 나가지 않습니다'}</p>
             <div className="row">
               <button type="button" className="btn" autoFocus onClick={() => setConfirm(false)}>
                 취소
@@ -461,7 +463,7 @@ function OrderForm({ s, live, cash, price, setPrice, heldQty }: { s: Stock; live
                   setSending(true);
                   try {
                     const r = await post<{ orderNo: string; orderTime: string; msg: string }>('/api/orders', { code: s.code, side, kind, price: kind === 'market' ? 0 : p, qty });
-                    setDone(`모의 주문 접수: ${s.name} ${fmt(qty)}주 ${sideName} · 주문번호 ${r.orderNo || '-'}${r.msg ? ` · ${r.msg}` : ''}`);
+                    setDone(`${mode.real ? '실전' : '모의'} 주문 접수: ${s.name} ${fmt(qty)}주 ${sideName} · 주문번호 ${r.orderNo || '-'}${r.msg ? ` · ${r.msg}` : ''}`);
                   } catch (e) {
                     setDone(`주문 안 됨: ${e instanceof Error ? e.message : String(e)}`);
                   } finally {

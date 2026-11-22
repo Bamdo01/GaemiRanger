@@ -60,8 +60,6 @@ async def place(o: OrderIn, by: str = "화면") -> dict:
     from . import settings
 
     lim = settings.load()
-    if config.KIS_MODE != "mock":
-        refuse("지금은 모의투자만 주문할 수 있습니다", 403)
     if lim["emergency"]:
         refuse("비상 정지 중이라 주문하지 않습니다 (설정에서 풀 수 있음)", 423)
     if not market.market_open():
@@ -100,7 +98,7 @@ async def place(o: OrderIn, by: str = "화면") -> dict:
                 refuse(f"매도가능수량은 {have:,}주입니다")
         d = await kis.post(
             ORDER,
-            "VTTC0012U" if o.side == "buy" else "VTTC0011U",
+            config.tr("VTTC0012U" if o.side == "buy" else "VTTC0011U"),
             {
                 "CANO": config.KIS_CANO,
                 "ACNT_PRDT_CD": config.KIS_ACNT_PRDT_CD,
@@ -169,7 +167,7 @@ async def fetch_orders(start: str, end: str, ccld: str = "00") -> list[dict]:
     for _ in range(10):
         d = await kis.get(
             DAILY_CCLD,
-            "VTTC8001R",
+            config.tr("VTTC8001R"),
             {
                 "CANO": config.KIS_CANO,
                 "ACNT_PRDT_CD": config.KIS_ACNT_PRDT_CD,
@@ -234,7 +232,7 @@ async def _find_open(no: str) -> dict:
 async def _rvsecncl(o: dict, cancel: bool, price: int = 0, qty: int = 0) -> dict:
     return await kis.post(
         RVSECNCL,
-        "VTTC0013U",  # 모의 정정취소 (공식 저장소 기준, 장중에 아직 시험 못 함)
+        config.tr("VTTC0013U"),  # 정정취소 (공식 저장소 기준, 장중에 아직 시험 못 함)
         {
             "CANO": config.KIS_CANO,
             "ACNT_PRDT_CD": config.KIS_ACNT_PRDT_CD,

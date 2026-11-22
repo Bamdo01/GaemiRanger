@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { post, refreshAll, usePoll, useServer } from './api';
+import { post, refreshAll, useMode, usePoll, useServer } from './api';
 import { tickOf } from './data';
 import { fmt } from './lib';
 import { Seg, type Opt } from './Pickers';
@@ -24,6 +24,7 @@ type Pending = { title: string; lines: [string, string][]; note?: string; go: ()
 
 export default function OrderPage() {
   const { live } = useServer();
+  const mode = useMode();
   const [sp, setSp] = useSearchParams();
   const tab = TABS.some(([k]) => k === sp.get('tab')) ? sp.get('tab')! : 'open';
   const days = sp.get('days') === '7' ? '7' : '30';
@@ -43,7 +44,7 @@ export default function OrderPage() {
     return (
       <div className="soon">
         <h1>주문</h1>
-        <p>한투 모의계좌에 연결된 서버에서만 낸 주문을 볼 수 있습니다. 지금은 예시 화면이라 주문 내역이 없습니다.</p>
+        <p>한투 계좌에 연결된 서버에서만 낸 주문을 볼 수 있습니다. 지금은 예시 화면이라 주문 내역이 없습니다.</p>
         <Link to="/stock" className="btn">
           종목 화면에서 주문하기
         </Link>
@@ -200,7 +201,7 @@ export default function OrderPage() {
             </table>
           </div>
         )}
-        <p className="sub">새 주문은 종목 화면에서 냅니다. 정정·취소는 확인창을 거쳐야 나가고, 서버가 한 번 더 검사합니다 (모의투자).</p>
+        <p className="sub">새 주문은 종목 화면에서 냅니다. 정정·취소는 확인창을 거쳐야 나가고, 서버가 한 번 더 검사합니다 ({mode.name}).</p>
       </section>
 
       {pending && (
@@ -216,7 +217,7 @@ export default function OrderPage() {
               ))}
             </dl>
             {pending.note && <p className="sub">{pending.note}</p>}
-            <p className="sub">한투 모의투자 계좌로 나갑니다 (실제 돈은 움직이지 않음)</p>
+            <p className={mode.real ? 'o-warn' : 'sub'}>{mode.real ? '한투 실전 계좌로 나갑니다. 실제 돈이 움직입니다.' : '한투 모의투자 계좌로 나갑니다 (실제 돈은 움직이지 않음)'}</p>
             <div className="row">
               <button type="button" className="btn" autoFocus onClick={() => setPending(null)} disabled={busy}>
                 닫기

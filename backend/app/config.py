@@ -12,12 +12,18 @@ load_dotenv(os.getenv("GR_ENV_FILE") or BASE / ".env")
 DATA = BASE / "data"  # 토큰 캐시, 주문 기록. .gitignore 에 들어 있다
 DATA.mkdir(exist_ok=True)
 
+# mock(모의투자) 또는 real(실전). 2026-11-23 사용자 결정: 실전으로 완전히 바꾼다 (주문 포함)
 KIS_MODE = os.getenv("KIS_MODE", "mock").strip()
-if KIS_MODE != "mock":
-    # 실전은 계획서 10단계(실전 전환)에서 점검표를 거친 뒤에 연다
-    raise SystemExit("KIS_MODE 는 지금 mock 만 됩니다. 실전 전환은 아직 열지 않았습니다.")
+if KIS_MODE not in ("mock", "real"):
+    raise SystemExit("KIS_MODE 는 mock 또는 real 입니다.")
+REAL = KIS_MODE == "real"
+KIS_BASE = "https://openapi.koreainvestment.com:9443" if REAL else "https://openapivts.koreainvestment.com:29443"
+KIS_WS = "ws://ops.koreainvestment.com:21000" if REAL else "ws://ops.koreainvestment.com:31000"
 
-KIS_BASE = "https://openapivts.koreainvestment.com:29443"
+
+def tr(mock_id: str) -> str:
+    """계좌·주문 TR ID: 모의는 V 로, 실전은 T 로 시작 (예: VTTC8434R → TTTC8434R). 시세 TR 은 같다"""
+    return "T" + mock_id[1:] if REAL and mock_id.startswith("V") else mock_id
 KIS_APP_KEY = os.getenv("KIS_APP_KEY", "").strip()
 KIS_APP_SECRET = os.getenv("KIS_APP_SECRET", "").strip()
 _acct = os.getenv("KIS_ACCOUNT", "").strip().replace(" ", "")
@@ -28,7 +34,7 @@ if not KIS_ACNT_PRDT_CD and _acct.isdigit():
         KIS_CANO, KIS_ACNT_PRDT_CD = _acct, "01"
     elif len(_acct) == 10:
         KIS_CANO, KIS_ACNT_PRDT_CD = _acct[:8], _acct[8:]
-KIS_RPS = max(0.5, float(os.getenv("KIS_RPS", "1")))
+KIS_RPS = max(0.5, float(os.getenv("KIS_RPS", "5" if REAL else "1")))  # 실전 한도는 초당 약 20건, 모의는 2건 아래
 
 # 로그인 비밀번호: .env 에 APP_PASSWORD 를 그냥 쓰면 된다. 서버가 켜질 때 해시로 바꿔 메모리에만 둔다.
 # (APP_PASSWORD_HASH 를 쓰면 그쪽이 먼저)
