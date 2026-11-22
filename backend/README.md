@@ -70,6 +70,21 @@ notepad .env
 - 모의 주문 (`VTTC0012U` 매수 / `VTTC0011U` 매도): 장중(09:00~15:30)에만 받으므로 아직 한 번도 보내 보지 않았다.
 - 진짜 텔레그램 봇과의 연결: 가짜 텔레그램으로만 시험했다 (승인·거절·만료·남의 버튼 무시·복구 코드·잠금 알림).
 
-## 6. 서버에 올리기 (다음 단계)
+## 6. 서버에 올리기 (2026-11-23 올림)
 
-클라우드 서버(서울)에 올리고 도메인 + HTTPS + 로그인으로 연다. 그때 `.env` 의 `COOKIE_SECURE=true`.
+- 서버: AWS Lightsail 시드니 (Ubuntu 24.04, 1GB, 고정 IP). 계정 제한으로 시드니만 됨. 한투 모의 API·웹소켓 모두 시드니에서 확인
+- 주소: https://15-135-201-31.sslip.io (도메인 없이 IP 로 HTTPS. sslip.io 는 IP 를 그대로 가리키는 무료 주소)
+- 구성: Caddy(443, 인증서 자동) → uvicorn 127.0.0.1:8000 (`--proxy-headers`, 밖에서 8000 직접 접속 불가)
+- 서비스: `systemctl status gaemiranger` (앱 계정 gaemi, 재부팅해도 자동 시작), Caddy 설정 `/etc/caddy/Caddyfile`
+- 앱 위치: `/opt/gaemiranger/app` (GitHub 클론), 비밀 값 `backend/.env` (600, COOKIE_SECURE=true), 기록 `backend/data/` (700)
+- 보안: SSH 키로만, ufw 로 22·80·443 만, 보안 업데이트 자동, 로그인 실패 IP당 5번·전체 15분 20번 제한, 12자 미만 비밀번호면 안 켜짐
+- 이 PC 서버는 끄고 쓴다 (한투 웹소켓이 두 곳에서 붙지 않게)
+
+고친 코드를 올릴 때 (이 PC 에서):
+
+```
+npm --prefix ../frontend run build:server
+ssh -i ~/.ssh/LightsailDefaultKey-ap-southeast-2.pem ubuntu@15.135.201.31 "sudo -u gaemi git -C /opt/gaemiranger/app pull"
+tar -czf dist.tgz -C ../frontend dist && scp -i ~/.ssh/LightsailDefaultKey-ap-southeast-2.pem dist.tgz ubuntu@15.135.201.31:/tmp/
+ssh -i ~/.ssh/LightsailDefaultKey-ap-southeast-2.pem ubuntu@15.135.201.31 "sudo chmod 644 /tmp/dist.tgz && sudo -u gaemi bash -c 'cd /opt/gaemiranger/app && rm -rf frontend/dist && tar -xzf /tmp/dist.tgz -C frontend' && sudo rm /tmp/dist.tgz && sudo systemctl restart gaemiranger"
+```
