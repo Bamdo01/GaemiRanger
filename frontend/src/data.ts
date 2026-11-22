@@ -35,7 +35,12 @@ export type Holding = {
   prev?: number;
   /** 매도가능수량 */
   sellable?: number;
+  /** kr 국내주식, us 해외주식, coin 코인, etc 기타 (수기 자산) */
+  asset?: string;
+  /** 어느 계좌에 몇 개 */
+  accounts?: { name: string; qty: number }[];
 };
+export type Account = { id: string; name: string; linked: boolean };
 
 // 코드, 이름, 업종, 시가총액(조원), 전일 종가, 현재가 — 코스피 시가총액 상위 50, 보통주만 (P1)
 const RAW: [string, string, string, number, number, number][] = [

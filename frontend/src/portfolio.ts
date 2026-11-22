@@ -22,22 +22,32 @@ export type Row = {
   weight: number;
   /** 매도가능수량 */
   sellable: number;
+  /** kr 국내주식, us 해외주식, coin 코인, etc 기타 */
+  asset: string;
+  accounts: { name: string; qty: number }[];
 };
 
+/** 수량 글자: 코인·해외는 소수까지, 단위는 주/개 */
+export const qtyText = (r: { qty: number; asset: string }) =>
+  r.asset === 'etc' ? '-' : `${r.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}${r.asset === 'coin' ? '개' : '주'}`;
+
 /** 지금 시세로 계산한 내 자산 */
-export function usePortfolio(stocks: Stock[]) {
-  const { holdings, cash, loaded, error } = useHoldings();
+export function usePortfolio(stocks: Stock[], account = 'all') {
+  const { holdings, cash, loaded, error, accounts, realized, dividends, fxDefault } = useHoldings(account);
   return useMemo(() => {
     const by = new Map(stocks.map((s) => [s.code, s]));
     const base = holdings.map((h) => {
       // 시장 50종목에 없는 보유 종목은 잔고에 온 값으로
-      const s: Stock = by.get(h.code) ?? { code: h.code, name: h.name ?? h.code, sector: h.sector ?? '기타', cap: 0, prev: h.prev ?? h.price ?? h.avg, price: h.price ?? h.avg };
+      const kr = (h.asset ?? 'kr') === 'kr';
+      const s: Stock = (kr ? by.get(h.code) : undefined) ?? { code: h.code, name: h.name ?? h.code, sector: h.sector ?? '기타', cap: 0, prev: h.prev ?? h.price ?? h.avg, price: h.price ?? h.avg };
       const amt = h.qty * s.price;
       return {
         code: h.code,
         qty: h.qty,
         avg: h.avg,
         sellable: h.sellable ?? h.qty,
+        asset: h.asset ?? 'kr',
+        accounts: h.accounts ?? [],
         s,
         amt,
         pnl: amt - h.qty * h.avg,
@@ -54,6 +64,10 @@ export function usePortfolio(stocks: Stock[]) {
       rows,
       loaded,
       error,
+      accounts,
+      realized,
+      dividends,
+      fxDefault,
       cash,
       stockValue,
       cost,
@@ -63,7 +77,7 @@ export function usePortfolio(stocks: Stock[]) {
       todayPnl,
       todayPct: stockValue - todayPnl ? (todayPnl / (stockValue - todayPnl)) * 100 : 0,
     };
-  }, [stocks, holdings, cash, loaded, error]);
+  }, [stocks, holdings, cash, loaded, error, accounts, realized, dividends, fxDefault]);
 }
 export type Portfolio = ReturnType<typeof usePortfolio>;
 

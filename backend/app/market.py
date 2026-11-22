@@ -9,7 +9,7 @@ import contextvars
 import time
 from datetime import date, datetime, timedelta, timezone
 
-from . import config
+from . import config, ledger
 from .kis import URGENT, KISError, kis
 from .universe import NAMES, SECTORS, UNIVERSE
 
@@ -266,7 +266,8 @@ async def poll_forever() -> None:
         await safe(fetch_index("kospi", "0001", "코스피"))
         await safe(fetch_index("kosdaq", "1001", "코스닥"))
         await safe(fetch_balance())
-        held = [h["code"] for h in balance.get("holdings", [])]
+        # 한투 보유 + 수기 계좌의 국내 종목은 매번 받는다
+        held = [h["code"] for h in balance.get("holdings", [])] + ledger.kr_codes()
         # 보유 종목은 매번, 나머지는 돌아가며 몇 개씩
         batch = held + [order[(i + k) % len(order)] for k in range(6)]
         i = (i + 6) % len(order)

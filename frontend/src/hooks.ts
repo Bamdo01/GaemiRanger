@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { usePoll, useServer } from './api';
-import { CASH, HOLDINGS, INDICES, STOCKS, tickOf, type Holding, type Index, type Stock } from './data';
+import { CASH, HOLDINGS, INDICES, STOCKS, tickOf, type Account, type Holding, type Index, type Stock } from './data';
 import { marketStatus, type MarketStatus, type Palette } from './lib';
 
 const REFRESH_MS = 10_000; // P2: 장중 10초마다
@@ -38,12 +38,26 @@ export function useMarket(): { status: MarketStatus; stocks: Stock[]; indices: I
   return { status, stocks, indices, at, live: false, error: '' };
 }
 
-/** 내 잔고. 서버면 한투 모의계좌 잔고, 아니면 예시 */
-export function useHoldings(): { holdings: Holding[]; cash: number; live: boolean; loaded: boolean; error: string } {
+type PortfolioRes = { holdings: Holding[]; cash: number; accounts: Account[]; realized: number; dividends: number; fxDefault: boolean };
+export type HoldingsState = PortfolioRes & { live: boolean; loaded: boolean; error: string };
+
+/** 내 자산 = 한투(연동) + 수기 계좌. account 는 all 또는 계좌 id. 서버가 없으면 예시 */
+export function useHoldings(account = 'all'): HoldingsState {
   const { live } = useServer();
-  const srv = usePoll<{ holdings: Holding[]; cash: number }>(live ? '/api/portfolio' : null, REFRESH_MS);
-  if (live) return { holdings: srv.data?.holdings ?? [], cash: srv.data?.cash ?? 0, live: true, loaded: !!srv.data, error: srv.error };
-  return { holdings: HOLDINGS, cash: CASH, live: false, loaded: true, error: '' };
+  const srv = usePoll<PortfolioRes>(live ? `/api/portfolio?account=${encodeURIComponent(account)}` : null, REFRESH_MS);
+  if (live)
+    return {
+      holdings: srv.data?.holdings ?? [],
+      cash: srv.data?.cash ?? 0,
+      accounts: srv.data?.accounts ?? [],
+      realized: srv.data?.realized ?? 0,
+      dividends: srv.data?.dividends ?? 0,
+      fxDefault: !!srv.data?.fxDefault,
+      live: true,
+      loaded: !!srv.data,
+      error: srv.error,
+    };
+  return { holdings: HOLDINGS, cash: CASH, accounts: [], realized: 0, dividends: 0, fxDefault: false, live: false, loaded: true, error: '' };
 }
 function jitterStock(s: Stock): Stock {
   const raw = s.price * (1 + (Math.random() - 0.5) * 0.006);

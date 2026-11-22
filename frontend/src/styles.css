@@ -374,3 +374,22 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
   .stage { flex-direction: column; }
   .heat { min-height: 60vh; }
 }
+
+/* 내 자산: 계좌 고르기, 수기 거래 기록 */
+.as-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.ledger h3 { margin: 0; font-size: 14px; }
+.in { height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink); font-size: 13px; min-width: 0; }
+.in.sm { height: 28px; width: 110px; }
+.lg-accts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.lg-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 10px; background: var(--seg); font-weight: 700; font-size: 13px; }
+.lg-chip .link { margin: 0; }
+.lg-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.lg-box { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); }
+.lg-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.lg-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; background: var(--seg); margin-bottom: 12px; }
+.lg-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 10px; }
+.lg-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--sec); font-weight: 600; }
+.lg-actions { display: flex; gap: 8px; }
+.lg-list-head { margin-top: 4px; }
+.lg-btns { display: flex; gap: 4px; justify-content: flex-end; }
+.tbl tr.editing { background: var(--seg); }

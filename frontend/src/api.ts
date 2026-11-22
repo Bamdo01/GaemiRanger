@@ -41,6 +41,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 export const post = <T,>(path: string, data: unknown) => api<T>(path, { method: 'POST', body: JSON.stringify(data) });
+export const put = <T,>(path: string, data: unknown) => api<T>(path, { method: 'PUT', body: JSON.stringify(data) });
+export const del = <T,>(path: string) => api<T>(path, { method: 'DELETE' });
 
 type Ctx = { status: ServerStatus; live: boolean; checked: boolean; refresh: () => Promise<void> };
 const ServerCtx = createContext<Ctx>({ status: OFFLINE, live: false, checked: false, refresh: async () => undefined });
@@ -66,6 +68,10 @@ export function ServerProvider({ children }: { children: ReactNode }) {
 }
 export const useServer = () => useContext(ServerCtx);
 
+const REFRESH_EVENT = 'gr-refresh';
+/** 받아 오고 있는 모든 값을 지금 다시 받는다 (수기 기록을 바꾼 뒤) */
+export const refreshAll = () => window.dispatchEvent(new Event(REFRESH_EVENT));
+
 /** live 일 때만 path 를 ms 마다 받아 온다 */
 export function usePoll<T>(path: string | null, ms: number): { data: T | null; error: string; at: number } {
   const [state, setState] = useState<{ data: T | null; error: string; at: number }>({ data: null, error: '', at: 0 });
@@ -85,9 +91,12 @@ export function usePoll<T>(path: string | null, ms: number): { data: T | null; e
     };
     load();
     const id = setInterval(load, ms);
+    // 기록을 바꾸면 refreshAll() 로 바로 다시 받는다
+    window.addEventListener(REFRESH_EVENT, load);
     return () => {
       alive = false;
       clearInterval(id);
+      window.removeEventListener(REFRESH_EVENT, load);
     };
   }, [path, ms]);
   return state;

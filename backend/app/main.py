@@ -7,6 +7,7 @@
 
 import asyncio
 import functools
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, market, orders, telegram
+from . import auth, config, ledger, market, orders, telegram
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
@@ -147,14 +148,111 @@ def get_market():
 
 
 @app.get("/api/portfolio", dependencies=api + [Depends(need_kis)])
-def get_portfolio():
-    if not market.balance:
-        raise HTTPException(503, detail={"code": "LOADING", "msg": f"잔고를 아직 못 받았습니다 ({kis.last_error})" if kis.last_error else "잔고를 처음 받아 오는 중입니다"})
-    hs = []
-    for h in market.balance["holdings"]:
-        q = market.quotes.get(h["code"], {})
-        hs.append({**h, "price": q.get("price") or h["price"], "prev": q.get("prev") or h["price"]})
-    return {"holdings": hs, "cash": market.balance["cash"], "at": market.balance["at"]}
+def get_portfolio(account: str = "all"):
+    """모든 자산을 한 포트폴리오로: 한투(연동) + 수기 계좌. account = all | kis | 수기 계좌 id"""
+    accounts = [{"id": "kis", "name": config.KIS_ACCOUNT_NAME, "linked": True}] + [{**a, "linked": False} for a in ledger.load()["accounts"]]
+    if account not in {a["id"] for a in accounts} | {"all"}:
+        raise HTTPException(400, "없는 계좌입니다")
+    hs: dict[str, dict] = {}
+    cash = 0.0
+    at = time.time()
+    if account in ("all", "kis"):
+        if not market.balance:
+            raise HTTPException(503, detail={"code": "LOADING", "msg": f"잔고를 아직 못 받았습니다 ({kis.last_error})" if kis.last_error else "잔고를 처음 받아 오는 중입니다"})
+        for h in market.balance["holdings"]:
+            q = market.quotes.get(h["code"], {})
+            hs[h["code"]] = {**h, "asset": "kr", "price": q.get("price") or h["price"], "prev": q.get("prev") or h["price"], "accounts": [{"name": config.KIS_ACCOUNT_NAME, "qty": h["qty"]}]}
+        cash += market.balance["cash"]
+        at = market.balance["at"]
+    m = ledger.holdings("all" if account in ("all", "kis") else account, market.quotes) if account != "kis" else {"holdings": [], "cash": 0, "realized": 0, "dividends": 0, "fxDefault": False}
+    for h in m["holdings"]:
+        old = hs.get(h["code"])
+        if old:  # 같은 종목이 한투와 수기 계좌에 다 있으면 한 줄로 (평균단가는 수량 가중)
+            qty = old["qty"] + h["qty"]
+            hs[h["code"]] = {**old, "qty": qty, "avg": (old["avg"] * old["qty"] + h["avg"] * h["qty"]) / qty, "accounts": old["accounts"] + h["accounts"]}
+        else:
+            hs[h["code"]] = h
+    cash += m["cash"]
+    return {"holdings": list(hs.values()), "cash": cash, "at": at, "accounts": accounts, "realized": m["realized"], "dividends": m["dividends"], "fxDefault": m["fxDefault"]}
+
+
+# ---------- 수기 자산 ----------
+class NameIn(BaseModel):
+    name: str
+
+
+class ValueIn(BaseModel):
+    value: float
+
+
+class PriceIn(BaseModel):
+    key: str
+    price: float
+
+
+async def _find_name(code: str) -> str:
+    from .universe import NAMES
+
+    if code in NAMES:
+        return NAMES[code]
+    q = market.quotes.get(code)
+    if q:
+        return q["name"]
+    if not config.kis_configured():
+        raise HTTPException(400, "종목 이름을 같이 넣어 주세요")
+    try:
+        return (await market.fetch_quote(code))["name"]
+    except KISError:
+        raise HTTPException(400, f"종목코드 {code} 를 찾지 못했습니다") from None
+
+
+@app.get("/api/ledger", dependencies=api)
+def get_ledger():
+    return ledger.view()
+
+
+@app.post("/api/ledger/accounts", dependencies=api)
+async def post_account(b: NameIn):
+    return await ledger.add_account(b.name)
+
+
+@app.put("/api/ledger/accounts/{aid}", dependencies=api)
+async def put_account(aid: str, b: NameIn):
+    return await ledger.rename_account(aid, b.name)
+
+
+@app.delete("/api/ledger/accounts/{aid}", dependencies=api)
+async def del_account(aid: str):
+    await ledger.delete_account(aid)
+    return {"ok": True}
+
+
+@app.post("/api/ledger/records", dependencies=api)
+async def post_record(b: ledger.RecordIn):
+    return await ledger.add_record(b, _find_name)
+
+
+@app.put("/api/ledger/records/{rid}", dependencies=api)
+async def put_record(rid: str, b: ledger.RecordIn):
+    return await ledger.edit_record(rid, b, _find_name)
+
+
+@app.delete("/api/ledger/records/{rid}", dependencies=api)
+async def del_record(rid: str):
+    await ledger.delete_record(rid)
+    return {"ok": True}
+
+
+@app.put("/api/ledger/fx", dependencies=api)
+async def put_fx(b: ValueIn):
+    await ledger.set_fx(b.value)
+    return {"ok": True}
+
+
+@app.put("/api/ledger/price", dependencies=api)
+async def put_price(b: PriceIn):
+    await ledger.set_price(b.key, b.price)
+    return {"ok": True}
 
 
 @app.get("/api/stock/{code}", dependencies=api + [Depends(need_kis)])

@@ -4,7 +4,8 @@ import AiReview from './AiReview';
 import Heatmap, { Legend, type Tile } from './Heatmap';
 import { useMarket } from './hooks';
 import { arrow, changeText, fmt, kstTime, signed, tone, type Palette } from './lib';
-import { checksOf, usePortfolio, type Portfolio, type Row } from './portfolio';
+import Ledger from './Ledger';
+import { checksOf, qtyText, usePortfolio, type Portfolio, type Row } from './portfolio';
 import { Seg, type Opt } from './Pickers';
 
 // 내 자산: 보기 버튼 없이 한 화면 (2026-11-18). 위 요약 줄, 왼쪽 히트맵, 오른쪽 점검·비중·AI 리뷰, 아래 표.
@@ -26,40 +27,68 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
     setSp(next, { replace: true });
   };
   const colorBy = pick('show', SHOW);
+  const acct = sp.get('acct') ?? 'all';
 
   const navigate = useNavigate();
   const { status, stocks, indices, at, live } = useMarket();
-  const port = usePortfolio(stocks);
+  const port = usePortfolio(stocks, acct);
   const k = indices.find((i) => i.id === 'kospi');
   const kospiPct = k ? ((k.value - k.prev) / k.prev) * 100 : 0;
-  const goStock = (c: string) => navigate(`/stock/${c}`);
+  const goStock = (c: string) => /^\d{6}$/.test(c) && navigate(`/stock/${c}`);
 
   const tiles = useMemo(() => tilesOf(port, colorBy), [port, colorBy]);
 
   if (!port.loaded)
     return (
       <div className="assets">
-        <div className="empty">{port.error ? `잔고를 불러오지 못했습니다: ${port.error}` : '한투 모의계좌 잔고를 불러오는 중입니다…'}</div>
+        <div className="empty">{port.error ? `잔고를 불러오지 못했습니다: ${port.error}` : '잔고를 불러오는 중입니다…'}</div>
       </div>
     );
 
   const has = port.rows.length > 0;
-  const byToday = [...port.rows].sort((a, b) => b.todayPnl - a.todayPnl);
-  const best = has ? byToday[0] : null;
-  const worst = has ? byToday[byToday.length - 1] : null;
+  // 오늘 등락은 시세가 있는 국내주식만
+  const byToday = port.rows.filter((r) => r.asset === 'kr').sort((a, b) => b.todayPnl - a.todayPnl);
+  const best = byToday.length ? byToday[0] : null;
+  const worst = byToday.length ? byToday[byToday.length - 1] : null;
+  const acctName = acct === 'all' ? '전체 계좌' : port.accounts.find((a) => a.id === acct)?.name ?? acct;
+  const setAcct = (v: string) => {
+    const next = new URLSearchParams(sp);
+    if (v === 'all') next.delete('acct');
+    else next.set('acct', v);
+    setSp(next, { replace: true });
+  };
 
   return (
     <div className="assets">
+      {live && (
+        <div className="as-top">
+          <label htmlFor="as-acct" className="sub">
+            계좌
+          </label>
+          <select id="as-acct" className="dd" value={acct} onChange={(e) => setAcct(e.target.value)}>
+            <option value="all">전체 계좌</option>
+            {port.accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          {port.fxDefault && <span className="o-warn">환율을 넣지 않아 1달러 = 1,400원으로 계산 중입니다. 아래 거래 기록에서 환율을 넣어 주세요.</span>}
+        </div>
+      )}
       <section className="summary" aria-label="내 자산 요약">
         <div className="sum-item">
           <span className="sum-k">총자산</span>
           <b className="sum-v">{fmt(port.total)}원</b>
-          <span className="sum-s">{status.open ? `${kstTime(at)} 기준` : status.label} · {live ? '한투 모의' : '예시 데이터'}</span>
+          <span className="sum-s">{status.open ? `${kstTime(at)} 기준` : status.label} · {live ? acctName : '예시 데이터'}</span>
         </div>
         <Sum k="평가손익" v={`${signed(port.pnl)}원`} s={changeText(port.pnlPct)} t={port.pnl} />
         <Sum k="오늘 손익" v={`${signed(port.todayPnl)}원`} s={`${changeText(port.todayPct)} · 코스피 ${changeText(kospiPct)}`} t={port.todayPnl} />
+        {(port.realized !== 0 || port.dividends !== 0) && (
+          <Sum k="실현손익 · 배당" v={`${signed(port.realized)}원`} s={`배당·이자 ${fmt(port.dividends)}원`} t={port.realized} />
+        )}
         <div className="sum-item">
-          <span className="sum-k">주식 / 현금</span>
+          <span className="sum-k">투자 / 현금</span>
           <b className="sum-v">{fmt(port.stockValue)}원</b>
           <span className="sum-s">
             현금 {fmt(port.cash)}원 ({((port.cash / port.total) * 100).toFixed(1)}%)
@@ -115,6 +144,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
       </div>
 
       {has && <HoldTable port={port} onPick={goStock} />}
+      {live && <Ledger />}
     </div>
   );
 }
@@ -141,8 +171,10 @@ function tilesOf(port: Portfolio, colorBy: string): Tile[] {
     pct: colorBy === 'profit' ? r.profit : r.today,
     name: r.s.name,
     extra: `${fmt(r.amt)}원 · ${of(r.amt)}%`,
+    static: r.asset !== 'kr',
     tip: [
-      ['수량', `${fmt(r.qty)}주`],
+      ['수량', qtyText(r)],
+      ...r.accounts.map((a): [string, string] => [a.name, qtyText({ qty: a.qty, asset: r.asset })]),
       ['평균단가', `${fmt(r.avg)}원`],
       ['현재가', `${fmt(r.s.price)}원`],
       ['평가금액', `${fmt(r.amt)}원`],
@@ -150,7 +182,7 @@ function tilesOf(port: Portfolio, colorBy: string): Tile[] {
       ['내 수익률', changeText(r.profit)],
       ['오늘 등락률', changeText(r.today)],
       ['총자산 중', `${of(r.amt)}%`],
-      ['주식 중', `${r.weight.toFixed(1)}%`],
+      ['투자 중', `${r.weight.toFixed(1)}%`],
     ],
   }));
   if (port.cash <= 0) return stocks;
@@ -230,7 +262,7 @@ function Weights({ port }: { port: Portfolio }) {
 type Col = { key: string; label: string; get: (r: Row) => number | string; show: (r: Row, maxAbs: number) => ReactNode; num?: boolean };
 const COLS: Col[] = [
   { key: 'name', label: '종목', get: (r) => r.s.name, show: (r) => r.s.name },
-  { key: 'qty', label: '수량', get: (r) => r.qty, show: (r) => `${fmt(r.qty)}주`, num: true },
+  { key: 'qty', label: '수량', get: (r) => r.qty, show: (r) => qtyText(r), num: true },
   { key: 'avg', label: '평균단가', get: (r) => r.avg, show: (r) => fmt(r.avg), num: true },
   { key: 'price', label: '현재가', get: (r) => r.s.price, show: (r) => fmt(r.s.price), num: true },
   { key: 'amt', label: '평가금액', get: (r) => r.amt, show: (r) => fmt(r.amt), num: true },
@@ -267,7 +299,7 @@ function HoldTable({ port, onPick }: { port: Portfolio; onPick: (c: string) => v
     <section className="card" aria-labelledby="h-tbl">
       <div className="card-head">
         <h2 id="h-tbl">보유 종목 표</h2>
-        <span className="sub">열 머리를 누르면 정렬 · 금액은 원 · 비중은 주식 기준</span>
+        <span className="sub">열 머리를 누르면 정렬 · 금액은 원(달러는 환율로 환산) · 비중은 현금 뺀 투자 기준</span>
       </div>
       <div className="tbl-wrap">
         <table className="tbl">
@@ -288,10 +320,14 @@ function HoldTable({ port, onPick }: { port: Portfolio; onPick: (c: string) => v
               <tr key={r.code}>
                 {COLS.map((c) => (
                   <td key={c.key} className={c.num ? 'num' : undefined}>
-                    {c.key === 'name' ? (
+                    {c.key === 'name' && r.asset === 'kr' ? (
                       <button type="button" className="tname" onClick={() => onPick(r.code)}>
                         {r.s.name} <small>{r.code}</small>
                       </button>
+                    ) : c.key === 'name' ? (
+                      <span className="tname">
+                        {r.s.name} <small>{r.s.sector}</small>
+                      </span>
                     ) : (
                       c.show(r, maxAbs)
                     )}
@@ -302,7 +338,7 @@ function HoldTable({ port, onPick }: { port: Portfolio; onPick: (c: string) => v
           </tbody>
           <tfoot>
             <tr>
-              <td>현금 (예수금)</td>
+              <td>현금</td>
               <td colSpan={3} />
               <td className="num">{fmt(port.cash)}</td>
               <td colSpan={4} />
