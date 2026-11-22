@@ -40,7 +40,10 @@ def check_password(pw: str, stored: str) -> bool:
 
 
 def _sign(exp: int) -> str:
-    key = (config.SESSION_SECRET + config.PASSWORD_FINGERPRINT).encode()
+    from . import settings
+
+    # 설정의 "모든 기기 로그아웃"을 누르면 sessionNonce 가 바뀌어 예전 쿠키가 모두 무효
+    key = (config.SESSION_SECRET + config.PASSWORD_FINGERPRINT + settings.get("sessionNonce")).encode()
     mac = hmac.new(key, str(exp).encode(), hashlib.sha256).hexdigest()
     return f"{exp}.{mac}"
 
@@ -67,6 +70,12 @@ def _ip(req: Request) -> str:
     return req.client.host if req.client else "?"
 
 
+def _activity(req: Request, text: str, result: str) -> None:
+    from . import activity
+
+    activity.log("login", text, by=f"IP {_ip(req)} · {_short_agent(req.headers.get('user-agent', ''))}", result=result)
+
+
 def _set_session(res: Response) -> None:
     exp = int(time.time() + config.SESSION_HOURS * 3600)
     res.set_cookie(COOKIE, _sign(exp), max_age=config.SESSION_HOURS * 3600, httponly=True, samesite="strict", secure=config.COOKIE_SECURE, path="/")
@@ -83,6 +92,7 @@ async def _check_password_or_fail(req: Request, password: str, extra_ok: bool = 
         raise HTTPException(429, "로그인 실패가 많아 10분 동안 막혔습니다")
     if not check_password(password, config.APP_PASSWORD_HASH) or not extra_ok:
         _fails[ip] = recent + [now]
+        _activity(req, "로그인 실패", "실패")
         if len(_fails[ip]) >= MAX_FAILS:
             await telegram.notify(f"[개미레인저] 로그인 실패 {MAX_FAILS}번 → 10분 잠금\n시각 {telegram.now_text()}\nIP {ip}")
         raise HTTPException(401, "비밀번호가 맞지 않습니다" if extra_ok else "비밀번호 또는 복구 코드가 맞지 않습니다")
@@ -128,6 +138,7 @@ def _short_agent(ua: str) -> str:
 async def login(req: Request, res: Response, password: str) -> dict:
     await _check_password_or_fail(req, password)
     if not telegram.configured():
+        _activity(req, "로그인", "성공")
         _set_session(res)
         return {"ok": True}
     _sweep()

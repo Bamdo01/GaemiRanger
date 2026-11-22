@@ -160,8 +160,10 @@ async def add(b: RuleIn) -> dict:
     elif b.kind == "buy":
         if not (b.price and b.price > 0 and b.qty and b.qty > 0):
             raise HTTPException(400, "매수 가격과 수량을 넣어 주세요")
-        if b.price * b.qty > config.ORDER_LIMIT_WON:
-            raise HTTPException(400, f"1회 주문 한도 {config.ORDER_LIMIT_WON:,}원을 넘습니다")
+        from . import settings
+
+        if b.price * b.qty > settings.get("orderLimit"):
+            raise HTTPException(400, f"1회 주문 한도 {settings.get('orderLimit'):,}원을 넘습니다")
         r.update(price=int(b.price), mode="confirm")  # 매수는 항상 확인 (사용자 결정)
     else:
         if b.dir in ("above", "below"):

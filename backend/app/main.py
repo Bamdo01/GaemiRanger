@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, ledger, market, orders, prices, realtime, rules, telegram
+from . import activity, auth, config, ledger, market, orders, prices, realtime, rules, settings, telegram
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
@@ -117,6 +117,7 @@ def status(req: Request):
             "lastError": kis.last_error or None,
             "telegramError": telegram.last_error or None,
             "realtime": {k: realtime.state[k] for k in ("kis", "upbit", "slots", "overflow", "lastTick")},
+            "limits": {k: settings.get(k) for k in ("orderLimit", "allowMarket", "emergency")},
         }
         if auth.logged_in(req)
         else None,
@@ -198,6 +199,13 @@ class PriceIn(BaseModel):
     price: float
 
 
+def _rec_text(r: dict) -> str:
+    k = {"buy": "매수", "sell": "매도", "div": "배당·이자", "value": "금액 평가"}.get(r["kind"], r["kind"])
+    if r["kind"] in ("buy", "sell"):
+        return f"{r['date']} {k} {r['name']} {r['qty']:g} × {r['price']:,.2f} {r['currency']}"
+    return f"{r['date']} {k} {r['name']} {r['amount']:,.0f} {r['currency']}"
+
+
 async def _find_name(code: str) -> str:
     from .universe import NAMES
 
@@ -221,47 +229,58 @@ def get_ledger():
 
 @app.post("/api/ledger/accounts", dependencies=api)
 async def post_account(b: NameIn):
-    return await ledger.add_account(b.name)
+    a = await ledger.add_account(b.name)
+    activity.log("ledger", f"수기 계좌 만듦: {a['name']}")
+    return a
 
 
 @app.put("/api/ledger/accounts/{aid}", dependencies=api)
 async def put_account(aid: str, b: NameIn):
-    return await ledger.rename_account(aid, b.name)
+    a = await ledger.rename_account(aid, b.name)
+    activity.log("ledger", f"수기 계좌 이름 바꿈: {a['name']}")
+    return a
 
 
 @app.delete("/api/ledger/accounts/{aid}", dependencies=api)
 async def del_account(aid: str):
     await ledger.delete_account(aid)
+    activity.log("ledger", f"수기 계좌 지움: {aid}")
     return {"ok": True}
 
 
 @app.post("/api/ledger/records", dependencies=api)
 async def post_record(b: ledger.RecordIn):
     r = await ledger.add_record(b, _find_name)
+    activity.log("ledger", f"수기 기록 추가: {_rec_text(r)}")
     prices.wake.set()  # 새 해외주식·코인이면 시세를 바로 받는다
     return r
 
 
 @app.put("/api/ledger/records/{rid}", dependencies=api)
 async def put_record(rid: str, b: ledger.RecordIn):
-    return await ledger.edit_record(rid, b, _find_name)
+    r = await ledger.edit_record(rid, b, _find_name)
+    activity.log("ledger", f"수기 기록 고침: {_rec_text(r)}")
+    return r
 
 
 @app.delete("/api/ledger/records/{rid}", dependencies=api)
 async def del_record(rid: str):
     await ledger.delete_record(rid)
+    activity.log("ledger", f"수기 기록 지움: {rid}")
     return {"ok": True}
 
 
 @app.put("/api/ledger/fx", dependencies=api)
 async def put_fx(b: ValueIn):
     await ledger.set_fx(b.value)
+    activity.log("ledger", f"환율 직접 입력: 1달러 {b.value:,.2f}원")
     return {"ok": True}
 
 
 @app.put("/api/ledger/price", dependencies=api)
 async def put_price(b: PriceIn):
     await ledger.set_price(b.key, b.price)
+    activity.log("ledger", f"현재가 직접 입력: {b.key} {b.price:,}")
     return {"ok": True}
 
 
@@ -332,6 +351,75 @@ async def post_modify(no: str, m: orders.ModifyIn):
 @app.get("/api/orders/today", dependencies=api)
 def get_orders_today():
     return {"orders": orders.today_log()}
+
+
+# ---------- 기록 · 설정 ----------
+@app.get("/api/log", dependencies=api)
+def get_log(days: int = 7):
+    if not 1 <= days <= 365:
+        raise HTTPException(400, "기간은 1~365일입니다")
+    items = activity.merged(days)
+    today = __import__("datetime").datetime.now(market.KST).strftime("%Y-%m-%d")
+    t = [x for x in items if x["at"].startswith(today)]
+    return {
+        "items": items[:1000],
+        "today": {
+            "orders": len([x for x in t if x["type"] == "order" and x["result"] == "접수"]),
+            "refused": len([x for x in t if x["type"] == "order" and x["result"] == "거절"]),
+            "rules": len([x for x in t if x["type"] == "rule" and "발동" in x["text"]]),
+            "logins": len([x for x in t if x["type"] == "login"]),
+        },
+    }
+
+
+class EmergencyIn(BaseModel):
+    on: bool
+    password: str = ""
+
+
+class PasswordIn(BaseModel):
+    password: str
+
+
+@app.get("/api/settings", dependencies=api)
+def get_settings():
+    return {
+        **settings.public(),
+        "mode": config.KIS_MODE,
+        "kisConfigured": config.kis_configured(),
+        "telegram": telegram.configured(),
+        "rulesHalted": rules.load()["halted"],
+        "realtime": {k: realtime.state[k] for k in ("kis", "upbit", "slots", "overflow")},
+        "sessionHours": config.SESSION_HOURS,
+    }
+
+
+@app.put("/api/settings", dependencies=api)
+def put_settings(b: settings.LimitsIn):
+    changed = settings.set_limits(b)
+    names = {"orderLimit": "1회 주문 금액", "dailyMaxOrders": "하루 주문 횟수", "dailyMaxAmount": "하루 주문 총액", "allowMarket": "시장가 허용"}
+    if changed:
+        activity.log("setting", "한도 바꿈: " + ", ".join(f"{names[k]} {a} → {b2}" for k, (a, b2) in changed.items()))
+    return settings.public()
+
+
+@app.post("/api/settings/emergency", dependencies=api)
+async def post_emergency(b: EmergencyIn):
+    settings.set_emergency(b.on, b.password)
+    if b.on:
+        await rules.halt(True)  # 규칙도 멈춘다 (풀 때 규칙은 규칙 화면에서 따로 다시 시작)
+    activity.log("setting", "비상 정지 켬: 새 주문·정정 막음, 규칙 멈춤" if b.on else "비상 정지 풂", result="켬" if b.on else "풂")
+    realtime._bump()
+    return settings.public()
+
+
+@app.post("/api/settings/logout-all", dependencies=api)
+def post_logout_all(b: PasswordIn, res: Response):
+    settings.check_password(b.password)
+    settings.rotate_sessions()
+    activity.log("setting", "모든 기기 로그아웃", result="완료")
+    auth.logout(res)
+    return {"ok": True}
 
 
 # ---------- 규칙 ----------

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { post, usePoll } from './api';
+import { post, usePoll, useServer } from './api';
 import Chart from './Chart';
 import { HOLDINGS, STOCKS, groupCandles, priceLimits, sampleBook, sampleDaily, sampleTrade, tickOf, type Candle, type Stock } from './data';
 import { useMarket } from './hooks';
@@ -10,7 +10,7 @@ import { usePortfolio } from './portfolio';
 // 종목 페이지 (2026-11-18): UI 시안 A안 "프로 터미널" 배치. 관심종목 | 차트 | 호가 | 주문, 아래 종목 정보·내 보유.
 const LAST_KEY = 'gaemiranger.lastStock';
 const WATCH_KEY = 'gaemiranger.watch';
-const ORDER_LIMIT = 3_000_000; // 1회 주문 한도 (설정 C1 전 임시값)
+const DEFAULT_ORDER_LIMIT = 3_000_000; // 서버 설정을 못 받을 때 (예시 화면)
 
 function load<T>(k: string, d: T): T {
   try {
@@ -314,6 +314,7 @@ function OrderForm({ s, live, cash, price, setPrice, heldQty }: { s: Stock; live
   const p = kind === 'market' ? s.price : price;
   const CASH = cash;
   const amount = p * qty;
+  const ORDER_LIMIT = useServer().status.kis?.limits?.orderLimit ?? DEFAULT_ORDER_LIMIT;
   const maxQty = side === 'buy' ? Math.floor(Math.min(CASH, ORDER_LIMIT) / p) : heldQty;
   // 주문 검사 (O4)
   const problem =

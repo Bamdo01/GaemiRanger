@@ -9,7 +9,7 @@ export type ServerStatus = {
   telegram?: boolean;
   /** 남은 복구 코드가 있음 */
   recovery?: boolean;
-  kis: { configured: boolean; mode: string; lastOk: number | null; lastError: string | null } | null;
+  kis: { configured: boolean; mode: string; lastOk: number | null; lastError: string | null; limits?: { orderLimit: number; allowMarket: boolean; emergency: boolean } } | null;
   marketOpen: boolean;
 };
 const OFFLINE: ServerStatus = { server: false, loggedIn: false, loginReady: false, kis: null, marketOpen: false };

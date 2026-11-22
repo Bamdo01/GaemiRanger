@@ -5,6 +5,8 @@ import Login from './Login';
 import MarketPage from './MarketPage';
 import OrderPage from './OrderPage';
 import RulesPage from './RulesPage';
+import LogPage from './LogPage';
+import SettingsPage from './SettingsPage';
 import StockPage, { StockHome } from './StockPage';
 import { usePalette } from './hooks';
 
@@ -56,6 +58,14 @@ export default function App() {
         )}
       </header>
       {note && <p className="notice">{note}</p>}
+      {status.kis?.limits?.emergency && (
+        <p className="emergency-banner" role="alert">
+          비상 정지 중: 새 주문·정정이 막혀 있고 규칙이 멈춰 있습니다.{' '}
+          <Link to="/settings" className="btn sm">
+            설정에서 풀기
+          </Link>
+        </p>
+      )}
       <PendingBanner />
       <main className="main">
         <Routes>
@@ -67,6 +77,8 @@ export default function App() {
           <Route path="/stock/:code" element={<StockPage />} />
           <Route path="/order" element={<OrderPage />} />
           <Route path="/rules" element={<RulesPage />} />
+          <Route path="/log" element={<LogPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/:menu" element={<MenuSoon />} />
         </Routes>
       </main>

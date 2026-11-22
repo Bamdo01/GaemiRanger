@@ -13,7 +13,6 @@ from .kis import KISError, kis
 
 ORDER = "/uapi/domestic-stock/v1/trading/order-cash"
 LOG = config.DATA / "orders.jsonl"
-DAILY_MAX_ORDERS = 30  # 하루 주문 횟수 상한 (설정 C1 전 임시값)
 
 
 class OrderIn(BaseModel):
@@ -58,12 +57,20 @@ async def place(o: OrderIn, by: str = "화면") -> dict:
         _log({**rec, "result": "거절", "reason": msg})
         raise HTTPException(status, msg)
 
+    from . import settings
+
+    lim = settings.load()
     if config.KIS_MODE != "mock":
         refuse("지금은 모의투자만 주문할 수 있습니다", 403)
+    if lim["emergency"]:
+        refuse("비상 정지 중이라 주문하지 않습니다 (설정에서 풀 수 있음)", 423)
     if not market.market_open():
         refuse("장중(09:00~15:30)에만 주문할 수 있습니다")
-    if len([r for r in today_log() if r.get("result") == "접수"]) >= DAILY_MAX_ORDERS:
-        refuse(f"오늘 주문 {DAILY_MAX_ORDERS}회를 넘었습니다")
+    if o.kind == "market" and not lim["allowMarket"]:
+        refuse("설정에서 시장가 주문을 꺼 두었습니다")
+    done = [r for r in today_log() if r.get("result") == "접수" and not r.get("action")]
+    if len(done) >= lim["dailyMaxOrders"]:
+        refuse(f"오늘 주문 {lim['dailyMaxOrders']}회를 넘었습니다")
 
     # 최신 시세로 검사
     try:
@@ -77,8 +84,10 @@ async def place(o: OrderIn, by: str = "화면") -> dict:
         if q["upper"] and not (q["lower"] <= price <= q["upper"]):
             refuse(f"상한가 {q['upper']:,} ~ 하한가 {q['lower']:,} 사이만 됩니다")
     amount = price * o.qty
-    if amount > config.ORDER_LIMIT_WON:
-        refuse(f"1회 주문 한도 {config.ORDER_LIMIT_WON:,}원을 넘습니다")
+    if amount > lim["orderLimit"]:
+        refuse(f"1회 주문 한도 {lim['orderLimit']:,}원을 넘습니다")
+    if sum(r.get("amount", 0) for r in done) + amount > lim["dailyMaxAmount"]:
+        refuse(f"하루 주문 총액 {lim['dailyMaxAmount']:,}원을 넘습니다")
     try:
         if o.side == "buy":
             cash = await market.fetch_buyable(o.code, price, o.kind == "market")
@@ -278,6 +287,10 @@ async def modify(no: str, m: ModifyIn) -> dict:
         _log({**rec, "result": "거절", "reason": msg})
         raise HTTPException(status, msg)
 
+    from . import settings
+
+    if settings.get("emergency"):
+        refuse("비상 정지 중이라 정정하지 않습니다", 423)
     if not market.market_open():
         refuse("장중(09:00~15:30)에만 정정할 수 있습니다")
     o = await _find_open(no)
@@ -292,8 +305,8 @@ async def modify(no: str, m: ModifyIn) -> dict:
     if q.get("upper") and not (q["lower"] <= m.price <= q["upper"]):
         refuse(f"상한가 {q['upper']:,} ~ 하한가 {q['lower']:,} 사이만 됩니다")
     amount = m.price * m.qty
-    if amount > config.ORDER_LIMIT_WON:
-        refuse(f"1회 주문 한도 {config.ORDER_LIMIT_WON:,}원을 넘습니다")
+    if amount > settings.get("orderLimit"):
+        refuse(f"1회 주문 한도 {settings.get('orderLimit'):,}원을 넘습니다")
     try:
         if o["side"] == "buy":
             # 원래 주문에 묶인 금액은 정정하면 풀리므로 더해서 본다
