@@ -36,7 +36,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
   const port = usePortfolio(stocks, acct);
   const k = indices.find((i) => i.id === 'kospi');
   const kospiPct = k ? ((k.value - k.prev) / k.prev) * 100 : 0;
-  const goStock = (c: string) => /^\d{6}$/.test(c) && navigate(`/stock/${c}`);
+  const goStock = (c: string) => /^[0-9][0-9A-Z]{5}$/.test(c) && navigate(`/stock/${c}`);
 
   const flash = useFlash(port.rows);
   const tiles = useMemo(() => tilesOf(port, colorBy, flash), [port, colorBy, flash]);

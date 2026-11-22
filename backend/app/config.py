@@ -60,7 +60,14 @@ COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 SESSION_HOURS = 12
 
 ORDER_LIMIT_WON = int(os.getenv("ORDER_LIMIT_WON", "3000000"))
-KIS_ACCOUNT_NAME = "한투 모의"  # 내 자산 화면에서 연동 계좌 이름
+KIS_ACCOUNT_NAME = "한투 모의"
+import re as _re
+
+
+def is_kr_code(c: str) -> bool:
+    """국내 종목코드: 6자리 숫자, 또는 2024년부터 쓰는 영문 섞인 6자리 (예: 0098F0)"""
+    return bool(_re.fullmatch(r"[0-9][0-9A-Z]{5}", c or ""))
+  # 내 자산 화면에서 연동 계좌 이름
 
 # 텔레그램 로그인 승인 (둘 다 있으면 비밀번호 다음에 텔레그램 승인이 필요)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()

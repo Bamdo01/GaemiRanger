@@ -17,7 +17,7 @@ DAILY_MAX_ORDERS = 30  # 하루 주문 횟수 상한 (설정 C1 전 임시값)
 
 
 class OrderIn(BaseModel):
-    code: str = Field(pattern=r"^\d{6}$")
+    code: str = Field(pattern=r"^[0-9][0-9A-Z]{5}$")
     side: str = Field(pattern=r"^(buy|sell)$")
     kind: str = Field(pattern=r"^(limit|market)$")
     price: int = Field(ge=0, le=100_000_000)

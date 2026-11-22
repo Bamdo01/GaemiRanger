@@ -40,7 +40,7 @@ export default function StockPage() {
   const { stocks, status, at, live } = useMarket();
   // 주문은 한투 계좌로만 나가므로 현금·보유 수량은 한투 계좌 것만
   const port = usePortfolio(stocks, 'kis');
-  const detail = usePoll<Stock>(live && /^\d{6}$/.test(code) ? `/api/stock/${code}` : null, 5000, true);
+  const detail = usePoll<Stock>(live && /^[0-9][0-9A-Z]{5}$/.test(code) ? `/api/stock/${code}` : null, 5000, true);
   // 서버 응답 전에는 시장 화면에서 받아 둔 시세로 먼저 그린다 (한투 호출은 초당 1건이라 기다리지 않게)
   const s = (live ? detail.data : undefined) ?? stocks.find((x) => x.code === code);
   const [watch, setWatch] = useState<string[]>(() => load(WATCH_KEY, HOLDINGS.map((h) => h.code)));

@@ -24,3 +24,7 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# 개인 금융 자료 (잔고·거래내역 PDF 등) — 공개 저장소에 올리지 않는다
+현재 잔고/
+*.pdf

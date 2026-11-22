@@ -254,7 +254,7 @@ async def _clean(d: dict, b: RecordIn, find_name) -> dict:
             raise HTTPException(400, "매수·매도는 국내주식, 해외주식, 코인만 됩니다")
         sym = b.symbol.strip().upper()
         if b.asset == "kr":
-            if not (sym.isdigit() and len(sym) == 6):
+            if not config.is_kr_code(sym):
                 raise HTTPException(400, "국내주식은 6자리 종목코드를 넣어 주세요")
             if cur != "KRW":
                 raise HTTPException(400, "국내주식은 원화입니다")

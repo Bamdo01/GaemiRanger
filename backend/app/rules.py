@@ -133,7 +133,7 @@ def describe(r: dict) -> str:
 # ---------- 만들기·바꾸기 ----------
 async def add(b: RuleIn) -> dict:
     code = b.code.strip()
-    if not (code.isdigit() and len(code) == 6):
+    if not config.is_kr_code(code):
         raise HTTPException(400, "국내 종목코드 6자리만 됩니다 (한투 계좌 종목)")
     if b.kind not in KINDS:
         raise HTTPException(400, "규칙 종류가 잘못됐습니다")

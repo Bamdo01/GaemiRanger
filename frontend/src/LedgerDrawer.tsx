@@ -369,7 +369,7 @@ function StockSearch({ candidates, symbol, name, onPick }: { candidates: Candida
     if (!t) return [];
     return candidates.filter((c) => c.name.toLowerCase().includes(t) || c.code.startsWith(t)).slice(0, 8);
   }, [q, candidates]);
-  const code6 = /^\d{6}$/.test(q.trim()) ? q.trim() : '';
+  const code6 = /^[0-9][0-9A-Z]{5}$/.test(q.trim().toUpperCase()) ? q.trim().toUpperCase() : '';
   return (
     <div className="dr-search">
       <Field label="종목 (이름 또는 6자리 코드)" wide>
@@ -382,8 +382,8 @@ function StockSearch({ candidates, symbol, name, onPick }: { candidates: Candida
           onChange={(e) => {
             setQ(e.target.value);
             setOpenList(true);
-            const t = e.target.value.trim();
-            onPick(/^\d{6}$/.test(t) ? t : '', '');
+            const t = e.target.value.trim().toUpperCase();
+            onPick(/^[0-9][0-9A-Z]{5}$/.test(t) ? t : '', '');
           }}
           onFocus={() => setOpenList(true)}
           onBlur={() => setTimeout(() => setOpenList(false), 150)}

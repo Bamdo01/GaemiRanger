@@ -268,7 +268,7 @@ async def put_price(b: PriceIn):
 @app.get("/api/stock/{code}", dependencies=api + [Depends(need_kis)])
 @kis_errors
 async def get_stock(code: str):
-    if not code.isdigit() or len(code) != 6:
+    if not config.is_kr_code(code):
         raise HTTPException(400, "종목코드는 6자리 숫자입니다")
     realtime.see(code)  # 보고 있는 종목은 실시간 자리 1순위
     return await market.quote_fast(code)
@@ -277,7 +277,7 @@ async def get_stock(code: str):
 @app.get("/api/stock/{code}/candles", dependencies=api + [Depends(need_kis)])
 @kis_errors
 async def get_candles(code: str, period: str = "D"):
-    if not code.isdigit() or len(code) != 6 or period not in ("D", "W", "M"):
+    if not config.is_kr_code(code) or period not in ("D", "W", "M"):
         raise HTTPException(400, "잘못된 요청입니다")
     return {"candles": await market.fetch_candles(code, period)}
 
@@ -285,7 +285,7 @@ async def get_candles(code: str, period: str = "D"):
 @app.get("/api/stock/{code}/book", dependencies=api + [Depends(need_kis)])
 @kis_errors
 async def get_book(code: str):
-    if not code.isdigit() or len(code) != 6:
+    if not config.is_kr_code(code):
         raise HTTPException(400, "종목코드는 6자리 숫자입니다")
     b = realtime.books.get(code)
     if b and time.time() - b["at"] < 3:
