@@ -21,8 +21,10 @@ from . import config
 FILE = config.DATA / "ledger.json"
 _lock = asyncio.Lock()
 
-ASSETS = {"kr": "국내주식", "us": "해외주식", "coin": "코인", "cash": "예금·현금", "etc": "기타"}
-TRADE_ASSETS = ("kr", "us", "coin")
+ASSETS = {"kr": "국내주식", "us": "해외주식", "coin": "코인", "gold": "금현물", "cash": "예금·현금", "etc": "기타"}
+TRADE_ASSETS = ("kr", "us", "coin", "gold")
+# KRX 금시장 (수량 g, 가격 g당 원). 2026-11-23 확인: 한투 국내주식 현재가 API 에 이 코드를 넣으면 시세가 나온다 (공식 문서에는 없음)
+GOLD = {"M04020000": "금 99.99 (1kg 시장)", "M04020100": "미니금 99.99 (100g 시장)"}
 VALUE_ASSETS = ("cash", "etc")
 DEFAULT_USD = 1400.0  # 환율을 아직 안 넣었을 때만
 
@@ -90,6 +92,8 @@ def auto_price(asset: str, symbol: str) -> dict | None:
         return prices.overseas.get(symbol)
     if asset == "coin":
         return prices.coins.get(symbol)
+    if asset == "gold":
+        return prices.gold.get(symbol)
     return None
 
 
@@ -251,7 +255,7 @@ async def _clean(d: dict, b: RecordIn, find_name) -> dict:
     r = {"kind": b.kind, "date": b.date, "account": b.account, "asset": "", "symbol": "", "name": b.name.strip()[:40], "qty": 0.0, "price": 0.0, "fee": 0.0, "amount": 0.0, "currency": cur, "memo": b.memo.strip()[:100]}
     if b.kind in ("buy", "sell"):
         if b.asset not in TRADE_ASSETS:
-            raise HTTPException(400, "매수·매도는 국내주식, 해외주식, 코인만 됩니다")
+            raise HTTPException(400, "매수·매도는 국내주식, 해외주식, 코인, 금현물만 됩니다")
         sym = b.symbol.strip().upper()
         if b.asset == "kr":
             if not config.is_kr_code(sym):
@@ -259,6 +263,12 @@ async def _clean(d: dict, b: RecordIn, find_name) -> dict:
             if cur != "KRW":
                 raise HTTPException(400, "국내주식은 원화입니다")
             r["name"] = r["name"] or await find_name(sym)
+        elif b.asset == "gold":
+            if sym not in GOLD:
+                raise HTTPException(400, "금현물은 금 99.99 (M04020000) 또는 미니금 (M04020100) 입니다")
+            if cur != "KRW":
+                raise HTTPException(400, "금현물은 원화입니다")
+            r["name"] = r["name"] or GOLD[sym]
         elif not _SYM[b.asset].match(sym):
             raise HTTPException(400, "티커는 영문 대문자와 숫자로 넣어 주세요 (예: AAPL, BTC)")
         if not (b.qty > 0 and b.price > 0 and b.fee >= 0):

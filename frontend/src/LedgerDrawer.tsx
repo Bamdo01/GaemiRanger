@@ -32,6 +32,12 @@ const TRADE: [string, string][] = [
   ['kr', '국내주식'],
   ['us', '해외주식'],
   ['coin', '코인'],
+  ['gold', '금현물'],
+];
+// KRX 금시장 (수량 g, 단가 g당 원). 시세는 서버가 한투에서 받는다
+const GOLD: [string, string][] = [
+  ['M04020000', '금 99.99 (1kg 시장)'],
+  ['M04020100', '미니금 99.99 (100g 시장)'],
 ];
 const VALUE: [string, string][] = [
   ['cash', '예금·현금'],
@@ -237,8 +243,8 @@ function RecordForm({
       }
       if (k === 'asset') {
         n.currency = val === 'us' ? 'USD' : 'KRW';
-        n.symbol = '';
-        n.name = '';
+        n.symbol = val === 'gold' ? GOLD[0][0] : '';
+        n.name = val === 'gold' ? GOLD[0][1] : '';
       }
       return n;
     });
@@ -277,7 +283,17 @@ function RecordForm({
       </div>
       {form.kind !== 'div' && <Seg label="자산 종류" list={form.kind === 'value' ? VALUE : TRADE} cur={form.asset} onPick={(k) => set('asset', k)} />}
 
-      {trade && form.asset === 'kr' ? (
+      {trade && form.asset === 'gold' ? (
+        <Field label="금 종류" wide>
+          <select className="in" value={form.symbol} onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value, name: GOLD.find(([c]) => c === e.target.value)?.[1] ?? '' }))}>
+            {GOLD.map(([c, l]) => (
+              <option key={c} value={c}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : trade && form.asset === 'kr' ? (
         <StockSearch candidates={candidates} symbol={form.symbol} name={form.name} onPick={(c, n) => setForm((f) => ({ ...f, symbol: c, name: n }))} />
       ) : trade ? (
         <div className="dr-grid">
@@ -297,10 +313,10 @@ function RecordForm({
       <div className="dr-grid">
         {trade ? (
           <>
-            <Field label={form.asset === 'coin' ? '수량 (개)' : '수량 (주)'}>
+            <Field label={form.asset === 'coin' ? '수량 (개)' : form.asset === 'gold' ? '수량 (g)' : '수량 (주)'}>
               <input className="in big" inputMode="decimal" value={form.qty} onChange={(e) => set('qty', e.target.value)} />
             </Field>
-            <Field label={`${hold ? '평단가' : '단가'} (${form.currency === 'USD' ? '달러' : '원'})`}>
+            <Field label={`${hold ? '평단가' : '단가'} (${form.currency === 'USD' ? '달러' : form.asset === 'gold' ? 'g당 원' : '원'})`}>
               <input className="in big" inputMode="decimal" value={form.price} onChange={(e) => set('price', e.target.value)} />
             </Field>
             {!hold && (
@@ -319,7 +335,7 @@ function RecordForm({
             <input className="in" type="date" value={form.date} max={today()} onChange={(e) => set('date', e.target.value)} />
           </Field>
         )}
-        {form.asset !== 'kr' && (
+        {form.asset !== 'kr' && form.asset !== 'gold' && (
           <Field label="통화">
             <select className="in" value={form.currency} onChange={(e) => set('currency', e.target.value)}>
               <option value="KRW">원</option>

@@ -21,6 +21,7 @@ EXCHANGES = ("NAS", "NYS", "AMS")  # 나스닥, 뉴욕, 아멕스 순서로 찾�
 fx: dict = {}  # {"usd": 1346.0, "prev": 1334.1, "at": ...}
 overseas: dict[str, dict] = {}  # 티커 → {"price", "prev", "excd", "at"} (달러)
 coins: dict[str, dict] = {}  # 코인 → {"price", "prev", "at"} (원)
+gold: dict[str, dict] = {}  # 금시장 코드 → {"price", "prev", "at"} (g당 원)
 _excd: dict[str, str] = {}  # 티커 → 찾은 거래소 ("" 이면 못 찾음)
 _upbit_markets: tuple[float, set[str]] = (0, set())
 wake = asyncio.Event()  # 새 기록이 들어오면 바로 한 번 돈다
@@ -83,16 +84,36 @@ async def fetch_coins(syms: list[str]) -> None:
         coins[t["market"][4:]] = {"price": _f(t["trade_price"]), "prev": _f(t["prev_closing_price"]), "at": time.time()}
 
 
+async def fetch_gold(code: str) -> None:
+    """KRX 금현물 g당 시세 (한투 국내주식 현재가 API, 공식 문서에 없는 사용이라 실패하면 사람이 넣은 값)"""
+    o = (await kis.get("/uapi/domestic-stock/v1/quotations/inquire-price", "FHKST01010100", {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code})).get("output") or {}
+    p = _f(o.get("stck_prpr"))
+    if p > 0:
+        gold[code] = {"price": p, "prev": _f(o.get("stck_sdpr")) or p, "at": time.time()}
+
+
 def _symbols() -> tuple[list[str], list[str], bool]:
     from . import ledger  # ledger 가 prices 를 부르므로 여기서 늦게
 
     return ledger.symbols("us"), ledger.symbols("coin"), ledger.uses_usd()
 
 
+def _gold_symbols() -> list[str]:
+    from . import ledger
+
+    return ledger.symbols("gold")
+
+
+def market_open() -> bool:
+    from .market import market_open as mo
+
+    return mo()
+
+
 async def poll_forever() -> None:
     from . import config
 
-    last_fx = last_os = 0.0
+    last_fx = last_os = last_gold = 0.0
     while True:
         us, cs, need_fx = _symbols()
         try:
@@ -107,6 +128,11 @@ async def poll_forever() -> None:
                 if need_fx and now - last_fx > 60:
                     await fetch_fx()
                     last_fx = now
+                golds = _gold_symbols()
+                if golds and now - last_gold > (15 if market_open() else 600):
+                    for g in golds:
+                        await fetch_gold(g)
+                    last_gold = now
                 if us and (now - last_os > 60 or any(s not in overseas and s not in _excd for s in us)):
                     for s in us:
                         o = overseas.get(s, {})

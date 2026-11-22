@@ -32,7 +32,7 @@ export type Row = {
 
 /** 수량 글자: 코인·해외는 소수까지, 단위는 주/개 */
 export const qtyText = (r: { qty: number; asset: string }) =>
-  r.asset === 'etc' ? '-' : `${r.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}${r.asset === 'coin' ? '개' : '주'}`;
+  r.asset === 'etc' ? '-' : `${r.qty.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}${r.asset === 'coin' ? '개' : r.asset === 'gold' ? 'g' : '주'}`;
 
 /** 지금 시세로 계산한 내 자산 */
 export function usePortfolio(stocks: Stock[], account = 'all') {
