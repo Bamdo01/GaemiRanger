@@ -503,3 +503,61 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 .login-list .dn { color: var(--dn); }
 .set-logout { margin-top: 12px; }
 .badge.real { border-color: var(--dn); color: var(--dn); }
+
+/* ---------- 휴대폰 (2026-11-23 사용자: 모바일 배치가 별로, UX 고려해서) ---------- */
+.tabbar, .sheet-back { display: none; }
+@media (max-width: 760px) {
+  /* 위: 로고와 연결 표시만 한 줄, 메뉴는 아래 탭으로 */
+  .top { flex-wrap: nowrap; gap: 8px; padding: 8px 12px; }
+  .top .nav, .top-logout { display: none; }
+  .top .badge { font-size: 11px; padding: 2px 8px; white-space: nowrap; }
+  .main { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, 1fr); padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line); }
+  .tabbar a, .tabbar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 52px; border: 0; border-radius: 12px; background: none; color: var(--sec); font-size: 11.5px; font-weight: 700; text-decoration: none; cursor: pointer; }
+  .tabbar a span, .tabbar button span { font-size: 18px; line-height: 1; }
+  .tabbar a.active, .tabbar button.active { color: var(--ink); background: var(--seg); }
+  .sheet-back { display: block; position: fixed; inset: 0; z-index: 45; background: rgba(0, 0, 0, 0.45); }
+  .sheet { position: absolute; left: 8px; right: 8px; bottom: calc(68px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); }
+  .sheet-item { display: block; padding: 14px 16px; border: 0; border-radius: 10px; background: var(--seg); color: var(--ink); font-size: 15px; font-weight: 700; text-align: left; text-decoration: none; cursor: pointer; }
+  .sheet-item.active { outline: 2px solid var(--accent); }
+  .drawer { bottom: 0; }
+
+  /* 요약 카드: 한 줄로 옆으로 밀어 보기 (위아래 공간을 히트맵에) */
+  .summary { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 2px; margin: 0 -12px; padding-left: 12px; padding-right: 12px; scrollbar-width: none; }
+  .summary::-webkit-scrollbar { display: none; }
+  .summary > * { flex: 0 0 auto; scroll-snap-align: start; }
+  .sum-item { min-width: 132px; padding: 7px 12px; }
+  .sum-v { font-size: 16px; }
+  .market, .assets, .orders { padding: 10px 12px 12px; gap: 10px; }
+
+  /* 시장: 고르기 버튼은 한 줄 가로 스크롤, 이름표는 숨김 */
+  .market .toolbar { flex-wrap: nowrap; overflow-x: auto; gap: 6px; scrollbar-width: none; }
+  .market .toolbar::-webkit-scrollbar { display: none; }
+  .market .pk > span { display: none; }
+  .market .dd { height: 32px; font-size: 12.5px; }
+  .stage { min-height: 0; }
+  .heat { min-height: 68vh; }
+
+  /* 내 자산 */
+  .as-heat { min-height: 0; }
+  .as-map { min-height: 62vh; }
+  .as-top .sub:first-child { display: none; }
+  .card { padding: 12px; border-radius: 14px; }
+
+  /* 종목: 머리 → 차트 → 주문 → 호가 → 관심종목 순서 */
+  .st-grid { display: flex; flex-direction: column; }
+  .st-chart { order: 1; }
+  .st-order { order: 2; }
+  .st-book { order: 3; }
+  .st-watch { order: 4; }
+  .chart { min-height: 300px; }
+  .st-head { padding: 10px 12px; }
+}
+.assets > *, .orders > *, .market > .summary, .market > .toolbar { flex-shrink: 0; }
+@media (max-width: 760px) {
+  /* 주문·규칙·기록: 버튼이 숨지 않게 요약은 두 칸씩 줄바꿈 */
+  .orders .summary { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; }
+  .orders .summary > .sum-item { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  .orders .summary > .grow { display: none; }
+  .orders .summary > .btn { flex: 1 1 calc(50% - 4px); height: 40px; justify-content: center; }
+}

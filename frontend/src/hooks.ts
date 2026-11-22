@@ -4,6 +4,7 @@ import { CASH, HOLDINGS, INDICES, STOCKS, tickOf, type Account, type Holding, ty
 import { marketStatus, type MarketStatus, type Palette } from './lib';
 
 const REFRESH_MS = 10_000; // P2: 장중 10초마다
+const CAP = new Map(STOCKS.map((s) => [s.code, s.cap]));
 
 /** 시세. 서버에 로그인돼 있고 한투 키가 있으면 서버(한투 모의) 값, 아니면 예시 값 (장중 10초마다 조금씩 움직임). */
 export function useMarket(): { status: MarketStatus; stocks: Stock[]; indices: Index[]; at: Date; live: boolean; error: string } {
@@ -28,7 +29,8 @@ export function useMarket(): { status: MarketStatus; stocks: Stock[]; indices: I
     const d = srv.data;
     return {
       status,
-      stocks: d?.stocks ?? [],
+      // 시가총액을 서버가 아직 못 받은 종목은 예시 데이터의 시가총액으로 칸 크기를 먼저 잡는다
+      stocks: (d?.stocks ?? []).map((s) => (s.cap ? s : { ...s, cap: CAP.get(s.code) ?? 1 })),
       indices: d?.indices ?? [],
       at: d?.at ? new Date(d.at * 1000) : new Date(),
       live: true,

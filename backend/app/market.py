@@ -231,6 +231,10 @@ async def fetch_candles(code: str, period: str) -> list:
     hit = _candles.get(key)
     if hit and time.time() - hit[0] < 600:
         return hit[1]
+    if hit and len(hit[1]) > 150:
+        # 다 받아 둔 묵은 캐시가 있으면 바로 돌려주고 뒤에서 새로 받는다 (지난 봉은 안 바뀌고 오늘 봉만 바뀜)
+        _later(f"c:{code}:{period}:refresh", _candle_refresh(code, period))
+        return hit[1]
     back_from, back_to = _SPANS[period][0]
     out = await _candle_span(code, period, back_from, back_to)
     if hit:  # 묵은 캐시가 있으면 지난 기간은 그것으로 채워 둔다
@@ -244,7 +248,54 @@ async def fetch_candles(code: str, period: str) -> list:
     return rows
 
 
+async def _candle_refresh(code: str, period: str) -> None:
+    hit = _candles.get((code, period))
+    back_from, back_to = _SPANS[period][0]
+    out = await _candle_span(code, period, back_from, back_to)
+    old = {c["t"].replace("-", ""): c for c in (hit[1] if hit else [])}
+    merged = {**old, **out}
+    _candles[(code, period)] = (time.time(), [merged[k] for k in sorted(merged)])
+
+
+MULTI = "/uapi/domestic-stock/v1/quotations/intstock-multprice"
+
+
+async def fetch_multi(codes: list[str]) -> None:
+    """실전 전용: 관심종목(멀티) 시세로 한 번에 30종목까지 (2026-11-23 확인, 5종목 0.4초).
+    시가총액·PER 같은 값은 이 API 에 없어서, 처음 한 번은 종목별 시세로 채워 두고 여기서는 가격만 바꾼다"""
+    for k in range(0, len(codes), 30):
+        part = codes[k : k + 30]
+        p: dict = {}
+        for n, c in enumerate(part, 1):
+            p[f"FID_COND_MRKT_DIV_CODE_{n}"] = "J"
+            p[f"FID_INPUT_ISCD_{n}"] = c
+        d = await kis.get(MULTI, "FHKST11300006", p)
+        now = time.time()
+        for o in d.get("output") or []:
+            code = o.get("inter_shrn_iscd", "")
+            price = _i(o.get("inter2_prpr"))
+            if not code or not price:
+                continue
+            q = quotes.get(code) or {"code": code, "name": NAMES.get(code) or o.get("inter_kor_isnm") or code, "sector": SECTORS.get(code, "기타"), "cap": 0}
+            if q.get("live") and now - q.get("at", 0) < 3:
+                continue  # 웹소켓 값이 더 새롭다
+            q.update(price=price, prev=_i(o.get("inter2_sdpr")) or _i(o.get("inter2_prdy_clpr")) or price, open=_i(o.get("inter2_oprc")), high=_i(o.get("inter2_hgpr")), low=_i(o.get("inter2_lwpr")), vol=_i(o.get("acml_vol")), val=_i(o.get("acml_tr_pbmn")), upper=_i(o.get("inter2_mxpr")), lower=_i(o.get("inter2_llam")), at=now)
+            q.pop("live", None)
+            quotes[code] = q
+
+
 # ---------- 주기 갱신 ----------
+_no_cap: set[str] = set()
+_prefetched: list[bool] = []
+
+
+def _prefetch_candles(codes: list[str]) -> None:
+    """보유 종목 일봉을 미리 받아 둔다 (종목 화면을 열면 바로 차트). 백그라운드 순서"""
+    _prefetched.append(True)
+    for c in codes:
+        _later(f"pre:{c}", fetch_candles(c, "D"))
+
+
 async def poll_forever() -> None:
     order = [c for c, _, _ in UNIVERSE]
     i = 0
@@ -268,6 +319,18 @@ async def poll_forever() -> None:
         await safe(fetch_balance())
         # 한투 보유 + 수기 계좌의 국내 종목은 매번 받는다
         held = [h["code"] for h in balance.get("holdings", [])] + ledger.kr_codes()
+        if config.REAL:
+            # 실전: 시가총액 등이 아직 없는 종목만 종목별로 받고(처음 한 번), 가격은 멀티 시세로 한꺼번에
+            await safe(fetch_multi(list(dict.fromkeys(order + held))))  # 가격 먼저 (50종목 2번 호출)
+            need = [c for c in dict.fromkeys(order + held) if not quotes.get(c, {}).get("cap") and c not in _no_cap]
+            for code in need[:25]:
+                await safe(fetch_quote(code))
+                if not quotes.get(code, {}).get("cap"):
+                    _no_cap.add(code)  # ETF 처럼 시가총액이 0 인 종목은 다시 묻지 않는다
+            if not _prefetched:
+                _prefetch_candles(held)
+            await asyncio.sleep(2 if is_open or need else 30)
+            continue
         # 보유 종목은 매번, 나머지는 돌아가며 몇 개씩
         # 실시간(웹소켓)으로 막 받은 종목은 조회하지 않는다 → 남는 한도를 시장 순회에 쓴다
         held = [c for c in held if not (quotes.get(c, {}).get("live") and time.time() - quotes[c]["at"] < 5)]
