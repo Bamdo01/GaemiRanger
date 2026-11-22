@@ -38,9 +38,13 @@ _plain = os.getenv("APP_PASSWORD", "").strip()
 import hashlib as _hh
 
 PASSWORD_FINGERPRINT = _hh.sha256((APP_PASSWORD_HASH or _plain).encode()).hexdigest()
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 if not APP_PASSWORD_HASH and _plain:
     if len(_plain) < 8:
         raise SystemExit(".env 의 APP_PASSWORD 는 8자 이상으로 정해 주세요.")
+    # 인터넷에 여는 서버(HTTPS, COOKIE_SECURE=true)는 더 긴 비밀번호만 받는다
+    if COOKIE_SECURE and len(_plain) < 12:
+        raise SystemExit("인터넷에 여는 서버는 APP_PASSWORD 를 12자 이상(추천 16자)으로 정해 주세요.")
     import hashlib as _h, secrets as _s
 
     _salt = _s.token_bytes(16)
@@ -56,7 +60,6 @@ if len(SESSION_SECRET) < 32:
 
         _f.write_text(_s2.token_hex(32), "utf-8")
     SESSION_SECRET = _f.read_text("utf-8").strip()
-COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 SESSION_HOURS = 12
 
 ORDER_LIMIT_WON = int(os.getenv("ORDER_LIMIT_WON", "3000000"))

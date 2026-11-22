@@ -69,6 +69,8 @@ async def security_headers(req: Request, call_next):
     res.headers["Referrer-Policy"] = "same-origin"
     if req.url.path.startswith("/api"):
         res.headers["Cache-Control"] = "no-store"
+    if config.COOKIE_SECURE:  # HTTPS 로 연 서버: 브라우저가 앞으로도 HTTPS 로만 오게
+        res.headers["Strict-Transport-Security"] = "max-age=31536000"
     return res
 
 

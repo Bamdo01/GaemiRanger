@@ -20,6 +20,10 @@ COOKIE = "gr_session"
 _fails: dict[str, list[float]] = {}  # IP 별 실패 시각
 MAX_FAILS = 5
 LOCK_SEC = 600
+# 모든 IP 를 합친 실패: 15분에 20번 넘으면 15분 동안 전체 막음
+_global: list[float] = []
+GLOBAL_MAX = 20
+GLOBAL_SEC = 900
 
 
 def hash_password(pw: str) -> str:
@@ -90,8 +94,13 @@ async def _check_password_or_fail(req: Request, password: str, extra_ok: bool = 
     recent = [t for t in _fails.get(ip, []) if now - t < LOCK_SEC]
     if len(recent) >= MAX_FAILS:
         raise HTTPException(429, "로그인 실패가 많아 10분 동안 막혔습니다")
+    # IP 를 바꿔 가며 시도하는 것을 막는 전체 한도 (인터넷에 열 때)
+    _global[:] = [t for t in _global if now - t < GLOBAL_SEC]
+    if len(_global) >= GLOBAL_MAX:
+        raise HTTPException(429, "로그인 실패가 너무 많아 잠시 모든 로그인을 막았습니다. 15분 뒤 다시 해 주세요")
     if not check_password(password, config.APP_PASSWORD_HASH) or not extra_ok:
         _fails[ip] = recent + [now]
+        _global.append(now)
         _activity(req, "로그인 실패", "실패")
         if len(_fails[ip]) >= MAX_FAILS:
             await telegram.notify(f"[개미레인저] 로그인 실패 {MAX_FAILS}번 → 10분 잠금\n시각 {telegram.now_text()}\nIP {ip}")
