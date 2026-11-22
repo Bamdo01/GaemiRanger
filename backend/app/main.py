@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import activity, auth, config, ledger, market, orders, prices, realtime, rules, settings, telegram
+from . import activity, ai, auth, config, ledger, market, orders, prices, realtime, rules, settings, telegram
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
@@ -120,6 +120,7 @@ def status(req: Request):
             "telegramError": telegram.last_error or None,
             "realtime": {k: realtime.state[k] for k in ("kis", "upbit", "slots", "overflow", "lastTick")},
             "limits": {k: settings.get(k) for k in ("orderLimit", "allowMarket", "emergency")},
+            "ai": ai.configured(),
         }
         if auth.logged_in(req)
         else None,
@@ -422,6 +423,22 @@ def post_logout_all(b: PasswordIn, res: Response):
     activity.log("setting", "모든 기기 로그아웃", result="완료")
     auth.logout(res)
     return {"ok": True}
+
+
+# ---------- AI ----------
+@app.post("/api/ai/chat", dependencies=api)
+async def ai_chat(b: ai.ChatIn):
+    if not ai.configured():
+        raise HTTPException(503, "AI 키가 아직 없습니다 (backend/.env 의 ANTHROPIC_API_KEY)")
+    try:
+        port = get_portfolio("all") if config.kis_configured() else None
+    except HTTPException:
+        port = None
+    rules_text = [r["text"] for r in rules.view()["rules"] if r["state"] == "watching"]
+    gen = await ai.answer(b, ai.context(port, rules_text))
+    q = "세 줄 리뷰" if b.review else b.messages[-1].content[:60]
+    activity.log("ai", f"AI {ai.INVESTORS[b.investor].split(' (')[0]} 관점: {q}")
+    return StreamingResponse(gen, media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 # ---------- 규칙 ----------

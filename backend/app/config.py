@@ -79,6 +79,11 @@ def is_kr_code(c: str) -> bool:
   # 내 자산 화면에서 연동 계좌 이름
 
 # 텔레그램 로그인 승인 (둘 다 있으면 비밀번호 다음에 텔레그램 승인이 필요)
+# AI (Claude). 키가 없으면 AI 리뷰는 예시로 남는다
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+AI_MODEL = os.getenv("AI_MODEL", "claude-opus-5-5").strip()
+AI_DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "100"))
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 

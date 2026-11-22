@@ -9,7 +9,7 @@ export type ServerStatus = {
   telegram?: boolean;
   /** 남은 복구 코드가 있음 */
   recovery?: boolean;
-  kis: { configured: boolean; mode: string; lastOk: number | null; lastError: string | null; limits?: { orderLimit: number; allowMarket: boolean; emergency: boolean } } | null;
+  kis: { configured: boolean; mode: string; lastOk: number | null; lastError: string | null; limits?: { orderLimit: number; allowMarket: boolean; emergency: boolean }; ai?: boolean } | null;
   marketOpen: boolean;
 };
 const OFFLINE: ServerStatus = { server: false, loggedIn: false, loginReady: false, kis: null, marketOpen: false };
@@ -140,3 +140,28 @@ export function StreamProvider({ children }: { children: ReactNode }) {
   return createElement(StreamCtx.Provider, { value: st }, children);
 }
 export const useStream = () => useContext(StreamCtx);
+
+/** POST 하고 답을 글자가 오는 대로 받는다 (AI 답). 실패하면 ApiError */
+export async function postStream(path: string, data: unknown, onText: (all: string) => void): Promise<string> {
+  let r: Response;
+  try {
+    r = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
+  } catch {
+    throw new ApiError(0, '서버에 연결하지 못했습니다');
+  }
+  if (!r.ok || !r.body) {
+    const body = await r.json().catch(() => null);
+    const d = body?.detail;
+    throw new ApiError(r.status, typeof d === 'string' ? d : d?.msg ?? `HTTP ${r.status}`);
+  }
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let all = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    all += dec.decode(value, { stream: true });
+    onText(all);
+  }
+  return all;
+}

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { postStream, useServer } from './api';
 import { fmt, signPct } from './lib';
 import { checksOf, type Facts, type Portfolio } from './portfolio';
 
-// AI 리뷰. 리뷰 글과 채팅 답은 AI 연결 전 예시다. 숫자는 점검 칸과 같은 계산(checksOf)을 쓴다.
-// 진짜 연결 때: /api/review, /api/chat (Claude 연결 방식은 PLAN.md D6).
+// AI 리뷰와 AI에게 묻기. 서버에 AI 키가 있으면 Claude 가 실제 포트폴리오로 답한다 (/api/ai/chat, 글자가 오는 대로).
+// 키가 없거나 서버가 없으면 예시 글. AI 에게 주문 도구는 없다 (읽기 전용 숫자만 보냄).
 
 type Investor = 'buffett' | 'graham' | 'lynch' | 'bogle' | 'dalio';
 const INVESTORS: [Investor, string, string][] = [
@@ -82,30 +83,64 @@ export default function AiReview({ port, kospiPct }: { port: Portfolio; kospiPct
 
   const f = checksOf(port, kospiPct).facts;
   const sim = similar(f);
+  const { live, status } = useServer();
+  const real = live && !!status.kis?.ai; // 진짜 AI
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [review, setReview] = useState<{ inv: Investor; text: string; at: number } | null>(null);
+  const [err, setErr] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'nearest' });
   }, [msgs]);
 
-  const ask = (q: string) => {
+  const ask = async (q: string) => {
     const t = q.trim();
-    if (!t) return;
-    setMsgs((m) => [
-      ...m,
-      { who: 'me', text: t },
-      { who: 'ai', text: `(예시 답변) AI가 연결되면 지금 포트폴리오(총자산 ${fmt(port.total)}원, ${f.n}종목)를 바탕으로 ${nameOf(inv)} 관점에서 답합니다.` },
-    ]);
+    if (!t || busy) return;
     setText('');
+    setErr('');
+    if (!real) {
+      setMsgs((m) => [...m, { who: 'me', text: t }, { who: 'ai', text: `(예시 답변) AI가 연결되면 지금 포트폴리오(총자산 ${fmt(port.total)}원, ${f.n}종목)를 바탕으로 ${nameOf(inv)} 관점에서 답합니다.` }]);
+      return;
+    }
+    const history = [...msgs, { who: 'me' as const, text: t }];
+    setMsgs([...history, { who: 'ai', text: '' }]);
+    setBusy(true);
+    try {
+      await postStream(
+        '/api/ai/chat',
+        { investor: inv, messages: history.map((m) => ({ role: m.who === 'me' ? 'user' : 'assistant', content: m.text })) },
+        (all) => setMsgs([...history, { who: 'ai', text: all }]),
+      );
+    } catch (e) {
+      setMsgs(history);
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
+  const getReview = async () => {
+    setBusy(true);
+    setErr('');
+    setReview({ inv, text: '', at: Date.now() });
+    try {
+      await postStream('/api/ai/chat', { investor: inv, review: true }, (all) => setReview({ inv, text: all, at: Date.now() }));
+    } catch (e) {
+      setReview(null);
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const lines = review && review.inv === inv ? review.text.split('\n').map((l) => l.replace(/^[-•]\s*/, '').trim()).filter(Boolean) : null;
   const suggest = [`${f.topSector} 비중을 줄여야 할까?`, '현금은 얼마나 두는 게 좋을까?'];
 
   return (
     <section className="card ai" aria-labelledby="h-ai">
       <div className="card-head">
         <h2 id="h-ai">AI 리뷰</h2>
-        <span className="sub">예시 · AI 연결 전</span>
+        <span className="sub">{real ? 'Claude · 참고용 (주문은 하지 않음)' : live ? '예시 · AI 키 없음 (backend/.env 의 ANTHROPIC_API_KEY)' : '예시 · AI 연결 전'}</span>
       </div>
 
       <div className="ai-pick">
@@ -127,17 +162,35 @@ export default function AiReview({ port, kospiPct }: { port: Portfolio; kospiPct
         )}
       </p>
 
-      <ul className="review">
-        {sampleReview(inv, f).map((p, i) => (
-          <li key={i}>{p}</li>
-        ))}
-      </ul>
+      {real ? (
+        <>
+          {lines && lines.length > 0 ? (
+            <ul className="review" aria-live="polite">
+              {lines.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="sub">{busy && review ? 'AI가 포트폴리오를 보는 중…' : `${nameOf(inv)} 관점으로 지금 포트폴리오를 세 줄로 리뷰합니다.`}</p>
+          )}
+          <button type="button" className="btn sm" onClick={getReview} disabled={busy}>
+            {lines ? '다시 리뷰 받기' : '리뷰 받기'}
+          </button>
+        </>
+      ) : (
+        <ul className="review">
+          {sampleReview(inv, f).map((p, i) => (
+            <li key={i}>{p}</li>
+          ))}
+        </ul>
+      )}
+      {err && <p className="o-warn">{err}</p>}
 
       {msgs.length > 0 && (
         <div className="msgs" aria-live="polite">
           {msgs.map((m, i) => (
             <p key={i} className={`msg ${m.who}`}>
-              {m.text}
+              {m.text || (busy && i === msgs.length - 1 ? '…' : '')}
             </p>
           ))}
           <div ref={endRef} />
@@ -154,7 +207,7 @@ export default function AiReview({ port, kospiPct }: { port: Portfolio; kospiPct
           AI에게 묻기
         </label>
         <input id="ai-ask" value={text} onChange={(e) => setText(e.target.value)} placeholder="AI에게 묻기" maxLength={300} />
-        <button type="submit" className="btn pri" disabled={!text.trim()}>
+        <button type="submit" className="btn pri" disabled={!text.trim() || busy}>
           보내기
         </button>
       </form>

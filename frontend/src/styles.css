@@ -561,3 +561,4 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
   .orders .summary > .grow { display: none; }
   .orders .summary > .btn { flex: 1 1 calc(50% - 4px); height: 40px; justify-content: center; }
 }
+.msg.ai { white-space: pre-wrap; }
