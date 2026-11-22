@@ -537,6 +537,9 @@ function MyHolding({ s, port }: { s: Stock; port: ReturnType<typeof usePortfolio
       ) : (
         <p className="sub">이 종목은 갖고 있지 않습니다.</p>
       )}
+      <Link to={`/rules?new=${s.code}`} className="btn sm rule-link">
+        {r ? '손절·익절 규칙 걸기' : '조건부 매수·알림 규칙 걸기'}
+      </Link>
     </section>
   );
 }

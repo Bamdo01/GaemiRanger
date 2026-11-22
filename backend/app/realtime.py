@@ -62,6 +62,9 @@ def wanted() -> tuple[list[tuple[str, str]], list[str]]:
             out += [("H0STCNT0", c), ("H0STASP0", c)]
     held_kr = [h["code"] for h in market.balance.get("holdings", [])] + ledger.kr_codes()
     out += [("H0STCNT0", c) for c in held_kr]
+    from . import rules  # 규칙 종목은 보유 다음 순서
+
+    out += [("H0STCNT0", c) for c in rules.codes()]
     for s in ledger.symbols("us"):
         ex = prices._excd.get(s)
         if ex:  # 거래소를 아직 모르면 조회가 먼저 찾는다

@@ -1,9 +1,10 @@
-import { Link, Navigate, NavLink, Route, Routes, useParams } from 'react-router-dom';
-import { post, useServer } from './api';
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { post, useServer, useStream } from './api';
 import AssetsPage from './AssetsPage';
 import Login from './Login';
 import MarketPage from './MarketPage';
 import OrderPage from './OrderPage';
+import RulesPage from './RulesPage';
 import StockPage, { StockHome } from './StockPage';
 import { usePalette } from './hooks';
 
@@ -55,6 +56,7 @@ export default function App() {
         )}
       </header>
       {note && <p className="notice">{note}</p>}
+      <PendingBanner />
       <main className="main">
         <Routes>
           <Route path="/" element={<Navigate to="/market" replace />} />
@@ -64,6 +66,7 @@ export default function App() {
           <Route path="/stock" element={<StockHome />} />
           <Route path="/stock/:code" element={<StockPage />} />
           <Route path="/order" element={<OrderPage />} />
+          <Route path="/rules" element={<RulesPage />} />
           <Route path="/:menu" element={<MenuSoon />} />
         </Routes>
       </main>
@@ -83,5 +86,20 @@ function MenuSoon() {
         시장으로
       </Link>
     </div>
+  );
+}
+
+/** 규칙이 발동해 확인을 기다리면 어느 화면에서든 위에 알린다 (5분 안에 눌러야 나가므로) */
+function PendingBanner() {
+  const { rulesPending } = useStream();
+  const loc = useLocation();
+  if (!rulesPending || loc.pathname === '/rules') return null;
+  return (
+    <p className="pending-banner" role="alert">
+      규칙이 발동해 확인을 기다리는 주문이 {rulesPending}건 있습니다. 5분 안에 확인하지 않으면 취소됩니다.{' '}
+      <Link to="/rules" className="btn sm pri">
+        확인하러 가기
+      </Link>
+    </p>
   );
 }

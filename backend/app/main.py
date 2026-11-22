@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, ledger, market, orders, prices, realtime, telegram
+from . import auth, config, ledger, market, orders, prices, realtime, rules, telegram
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
@@ -28,6 +28,7 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(market.poll_forever()), asyncio.create_task(telegram.poll_forever()), asyncio.create_task(prices.poll_forever()),
         asyncio.create_task(realtime.kis_forever()),
         asyncio.create_task(realtime.upbit_forever()),
+        asyncio.create_task(rules.run_forever()),
     ]
     yield
     for t in tasks:
@@ -333,6 +334,53 @@ def get_orders_today():
     return {"orders": orders.today_log()}
 
 
+# ---------- 규칙 ----------
+class StateIn(BaseModel):
+    state: str
+
+
+class HaltIn(BaseModel):
+    on: bool
+
+
+@app.get("/api/rules", dependencies=api)
+def get_rules():
+    return rules.view()
+
+
+@app.post("/api/rules", dependencies=api + [Depends(need_kis)])
+async def post_rule(b: rules.RuleIn):
+    return await rules.add(b)
+
+
+@app.put("/api/rules/{rid}", dependencies=api)
+async def put_rule(rid: str, b: StateIn):
+    return await rules.set_state(rid, b.state)
+
+
+@app.delete("/api/rules/{rid}", dependencies=api)
+async def del_rule(rid: str):
+    await rules.delete(rid)
+    return {"ok": True}
+
+
+@app.post("/api/rules/halt", dependencies=api)
+async def post_halt(b: HaltIn):
+    await rules.halt(b.on)
+    return {"ok": True}
+
+
+@app.post("/api/rules/pending/{pid}/go", dependencies=api + [Depends(need_kis)])
+async def post_pending_go(pid: str):
+    return await rules.confirm(pid)
+
+
+@app.post("/api/rules/pending/{pid}/dismiss", dependencies=api)
+async def post_pending_dismiss(pid: str):
+    await rules.dismiss(pid)
+    return {"ok": True}
+
+
 @app.get("/api/stream", dependencies=api)
 async def stream(req: Request):
     """실시간 알림 (Server-Sent Events). 시세가 바뀌면 화면이 다시 받게 알린다. 초당 최대 4번으로 모은다"""
@@ -346,7 +394,7 @@ async def stream(req: Request):
             if v != last:
                 last = v
                 hb = time.time()
-                info = {"v": v, "at": realtime.state["lastTick"], "kis": realtime.state["kis"], "upbit": realtime.state["upbit"], "overflow": len(realtime.state["overflow"])}
+                info = {"v": v, "at": realtime.state["lastTick"], "kis": realtime.state["kis"], "upbit": realtime.state["upbit"], "overflow": len(realtime.state["overflow"]), "rulesPending": len(rules.pending)}
                 yield f"data: {json.dumps(info)}\n\n"
             elif time.time() - hb > 14:
                 yield ": ping\n\n"  # 연결 유지

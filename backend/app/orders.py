@@ -51,8 +51,8 @@ def today_log() -> list[dict]:
     return out
 
 
-async def place(o: OrderIn) -> dict:
-    rec = {"at": datetime.now(market.KST).isoformat(timespec="seconds"), "mode": config.KIS_MODE, **o.model_dump(), "by": "화면"}
+async def place(o: OrderIn, by: str = "화면") -> dict:
+    rec = {"at": datetime.now(market.KST).isoformat(timespec="seconds"), "mode": config.KIS_MODE, **o.model_dump(), "by": by}
 
     def refuse(msg: str, status: int = 400):
         _log({**rec, "result": "거절", "reason": msg})

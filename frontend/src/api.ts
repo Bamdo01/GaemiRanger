@@ -107,8 +107,8 @@ export function usePoll<T>(path: string | null, ms: number, onLive = false): { d
 }
 
 /* ---------- 실시간 알림 (서버 → 화면) ---------- */
-export type Stream = { connected: boolean; at: number; kis: string; upbit: string; overflow: number };
-const OFF: Stream = { connected: false, at: 0, kis: 'off', upbit: 'off', overflow: 0 };
+export type Stream = { connected: boolean; at: number; kis: string; upbit: string; overflow: number; rulesPending: number };
+const OFF: Stream = { connected: false, at: 0, kis: 'off', upbit: 'off', overflow: 0, rulesPending: 0 };
 const StreamCtx = createContext<Stream>(OFF);
 
 /** 로그인·한투 연결이 되어 있으면 /api/stream 을 열어 두고, 알림이 오면 live usePoll 들을 다시 받게 한다 */
@@ -121,7 +121,7 @@ export function StreamProvider({ children }: { children: ReactNode }) {
     es.onmessage = (e) => {
       try {
         const d = JSON.parse(e.data);
-        setSt({ connected: true, at: (d.at ?? 0) * 1000, kis: d.kis, upbit: d.upbit, overflow: d.overflow ?? 0 });
+        setSt({ connected: true, at: (d.at ?? 0) * 1000, kis: d.kis, upbit: d.upbit, overflow: d.overflow ?? 0, rulesPending: d.rulesPending ?? 0 });
         window.dispatchEvent(new Event(LIVE_EVENT));
       } catch {
         /* 무시 */

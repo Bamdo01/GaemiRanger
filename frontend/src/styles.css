@@ -434,3 +434,27 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
   .od-tbl td.od-btns .btn { height: 34px; padding: 0 16px; }
   .od-tbl tr.editing td[colspan] { grid-column: 1 / -1; }
 }
+
+/* 규칙 메뉴 */
+.btn.danger { border-color: var(--dn); color: var(--dn); }
+.warn-text { color: var(--accent); }
+.pending-card { border-color: var(--accent); }
+.pend-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.pend-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--seg); }
+.pend-list .o-go { height: 34px; padding: 0 18px; }
+.pending-banner { margin: 0; padding: 8px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: color-mix(in srgb, var(--accent) 20%, var(--bg)); color: var(--ink); font-size: 13px; font-weight: 700; }
+.tbl tr.dim td { opacity: 0.6; }
+.dist { display: inline-flex; align-items: center; gap: 6px; }
+.dist-bar { width: 60px; height: 6px; border-radius: 3px; background: var(--seg); overflow: hidden; }
+.dist-bar i { display: block; height: 100%; background: var(--sec); }
+.dist-bar i.near { background: var(--accent); }
+.rs-watching { color: var(--up); }
+.rs-failed { color: var(--dn); }
+.kind-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+.kind-card { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--seg); color: var(--ink); text-align: left; cursor: pointer; }
+.kind-card span { font-size: 11.5px; color: var(--sec); }
+.kind-card[aria-pressed='true'] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.qty-row { display: flex; gap: 6px; align-items: center; }
+.qty-row .chip { height: 34px; background: var(--seg); }
+.qty-row .chip[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); opacity: 1; }
+.rule-link { margin-top: 8px; }
