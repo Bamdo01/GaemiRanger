@@ -12,7 +12,7 @@ export function useMarket(): { status: MarketStatus; stocks: Stock[]; indices: I
   const [stocks, setStocks] = useState(STOCKS);
   const [indices, setIndices] = useState(INDICES);
   const [at, setAt] = useState(() => new Date());
-  const srv = usePoll<{ stocks: Stock[]; indices: Index[]; at: number | null }>(live ? '/api/market' : null, REFRESH_MS);
+  const srv = usePoll<{ stocks: Stock[]; indices: Index[]; at: number | null }>(live ? '/api/market' : null, REFRESH_MS, true);
   useEffect(() => {
     const id = setInterval(() => {
       const s = marketStatus();
@@ -44,7 +44,7 @@ export type HoldingsState = PortfolioRes & { live: boolean; loaded: boolean; err
 /** 내 자산 = 한투(연동) + 수기 계좌. account 는 all 또는 계좌 id. 서버가 없으면 예시 */
 export function useHoldings(account = 'all'): HoldingsState {
   const { live } = useServer();
-  const srv = usePoll<PortfolioRes>(live ? `/api/portfolio?account=${encodeURIComponent(account)}` : null, REFRESH_MS);
+  const srv = usePoll<PortfolioRes>(live ? `/api/portfolio?account=${encodeURIComponent(account)}` : null, REFRESH_MS, true);
   if (live)
     return {
       holdings: srv.data?.holdings ?? [],

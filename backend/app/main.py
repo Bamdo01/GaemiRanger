@@ -7,23 +7,28 @@
 
 import asyncio
 import functools
+import json
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, ledger, market, orders, prices, telegram
+from . import auth, config, ledger, market, orders, prices, realtime, telegram
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    tasks = [asyncio.create_task(market.poll_forever()), asyncio.create_task(telegram.poll_forever()), asyncio.create_task(prices.poll_forever())]
+    tasks = [
+        asyncio.create_task(market.poll_forever()), asyncio.create_task(telegram.poll_forever()), asyncio.create_task(prices.poll_forever()),
+        asyncio.create_task(realtime.kis_forever()),
+        asyncio.create_task(realtime.upbit_forever()),
+    ]
     yield
     for t in tasks:
         t.cancel()
@@ -110,6 +115,7 @@ def status(req: Request):
             "lastOk": kis.last_ok or None,
             "lastError": kis.last_error or None,
             "telegramError": telegram.last_error or None,
+            "realtime": {k: realtime.state[k] for k in ("kis", "upbit", "slots", "overflow", "lastTick")},
         }
         if auth.logged_in(req)
         else None,
@@ -263,6 +269,7 @@ async def put_price(b: PriceIn):
 async def get_stock(code: str):
     if not code.isdigit() or len(code) != 6:
         raise HTTPException(400, "종목코드는 6자리 숫자입니다")
+    realtime.see(code)  # 보고 있는 종목은 실시간 자리 1순위
     return await market.quote_fast(code)
 
 
@@ -279,6 +286,9 @@ async def get_candles(code: str, period: str = "D"):
 async def get_book(code: str):
     if not code.isdigit() or len(code) != 6:
         raise HTTPException(400, "종목코드는 6자리 숫자입니다")
+    b = realtime.books.get(code)
+    if b and time.time() - b["at"] < 3:
+        return b
     return await market.fetch_book(code)
 
 
@@ -291,6 +301,29 @@ async def post_order(o: orders.OrderIn):
 @app.get("/api/orders/today", dependencies=api)
 def get_orders_today():
     return {"orders": orders.today_log()}
+
+
+@app.get("/api/stream", dependencies=api)
+async def stream(req: Request):
+    """실시간 알림 (Server-Sent Events). 시세가 바뀌면 화면이 다시 받게 알린다. 초당 최대 4번으로 모은다"""
+
+    async def gen():
+        last = -1
+        yield "retry: 3000\n\n"
+        hb = time.time()
+        while not await req.is_disconnected():
+            v = realtime.version()
+            if v != last:
+                last = v
+                hb = time.time()
+                info = {"v": v, "at": realtime.state["lastTick"], "kis": realtime.state["kis"], "upbit": realtime.state["upbit"], "overflow": len(realtime.state["overflow"])}
+                yield f"data: {json.dumps(info)}\n\n"
+            elif time.time() - hb > 14:
+                yield ": ping\n\n"  # 연결 유지
+                hb = time.time()
+            await asyncio.sleep(0.25)
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

@@ -6,6 +6,7 @@ import { useMarket } from './hooks';
 import { arrow, changeText, fmt, kstTime, signed, tone, type Palette } from './lib';
 import { put, refreshAll } from './api';
 import LedgerDrawer, { type Candidate, type Prefill } from './LedgerDrawer';
+import { LiveBadge, MovesCard, useFlash } from './Moves';
 import { checksOf, qtyText, usePortfolio, type Portfolio, type Row } from './portfolio';
 import { Seg, type Opt } from './Pickers';
 
@@ -37,7 +38,8 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
   const kospiPct = k ? ((k.value - k.prev) / k.prev) * 100 : 0;
   const goStock = (c: string) => /^\d{6}$/.test(c) && navigate(`/stock/${c}`);
 
-  const tiles = useMemo(() => tilesOf(port, colorBy), [port, colorBy]);
+  const flash = useFlash(port.rows);
+  const tiles = useMemo(() => tilesOf(port, colorBy, flash), [port, colorBy, flash]);
   // 기록 서랍 (null 이면 닫힘)
   const [drawer, setDrawer] = useState<Prefill | null>(null);
   const closeDrawer = useCallback(() => setDrawer(null), []);
@@ -90,6 +92,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
               </option>
             ))}
           </select>
+          <LiveBadge />
           {port.usesUsd && <FxChip fx={port.fx} source={port.fxSource} />}
           <span className="grow" />
           <button type="button" className="btn pri" onClick={() => setDrawer({})} aria-haspopup="dialog">
@@ -168,13 +171,14 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
               </button>
             </section>
           )}
+          {live && has && <MovesCard port={port} />}
           {has && <Checks port={port} kospiPct={kospiPct} />}
           <Weights port={port} />
           {has && <AiReview port={port} kospiPct={kospiPct} />}
         </div>
       </div>
 
-      {has && <HoldTable port={port} onPick={goStock} onAdd={live ? addFor : undefined} />}
+      {has && <HoldTable port={port} onPick={goStock} onAdd={live ? addFor : undefined} flash={flash} />}
     </div>
   );
 }
@@ -192,7 +196,7 @@ function Sum({ k, v, s, t }: { k: string; v: string; s: string; t: number }) {
 }
 
 // 현금도 한 칸으로 넣는다 (2026-11-18 사용자: 내 자산 히트맵에는 현금도 나와야). 칸 크기와 % 는 총자산 기준.
-function tilesOf(port: Portfolio, colorBy: string): Tile[] {
+function tilesOf(port: Portfolio, colorBy: string, flash: Record<string, 'up' | 'dn'> = {}): Tile[] {
   const of = (amt: number) => (port.total ? ((amt / port.total) * 100).toFixed(1) : '0.0');
   const stocks: Tile[] = port.rows.map((r) => ({
     id: r.code,
@@ -202,6 +206,7 @@ function tilesOf(port: Portfolio, colorBy: string): Tile[] {
     name: r.s.name,
     extra: `${fmt(r.amt)}원 · ${of(r.amt)}%`,
     static: r.asset !== 'kr',
+    flash: flash[r.code],
     tip: [
       ['수량', qtyText(r)],
       ...r.accounts.map((a): [string, string] => [a.name, qtyText({ qty: a.qty, asset: r.asset })]),
@@ -315,7 +320,7 @@ const COLS: Col[] = [
   { key: 'weight', label: '비중', get: (r) => r.weight, show: (r) => `${r.weight.toFixed(1)}%`, num: true },
 ];
 
-function HoldTable({ port, onPick, onAdd }: { port: Portfolio; onPick: (c: string) => void; onAdd?: (r: Row) => void }) {
+function HoldTable({ port, onPick, onAdd, flash = {} }: { port: Portfolio; onPick: (c: string) => void; onAdd?: (r: Row) => void; flash?: Record<string, 'up' | 'dn'> }) {
   const [sort, setSort] = useState<{ key: string; desc: boolean }>({ key: 'amt', desc: true });
   const col = COLS.find((c) => c.key === sort.key)!;
   const maxAbs = Math.max(1, ...port.rows.map((r) => Math.abs(r.pnl)));
@@ -348,7 +353,7 @@ function HoldTable({ port, onPick, onAdd }: { port: Portfolio; onPick: (c: strin
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.code}>
+              <tr key={r.code} className={flash[r.code] ? `flash-${flash[r.code]}` : undefined}>
                 {COLS.map((c) => (
                   <td key={c.key} className={c.num ? 'num' : undefined}>
                     {c.key === 'name' && r.asset === 'kr' ? (

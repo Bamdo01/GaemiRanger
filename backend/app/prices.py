@@ -96,18 +96,22 @@ async def poll_forever() -> None:
     while True:
         us, cs, need_fx = _symbols()
         try:
-            if cs:
-                await fetch_coins(cs)
+            stale = [c for c in cs if not (coins.get(c, {}).get("live") and time.time() - coins[c]["at"] < 30)]
+            if stale:
+                await fetch_coins(stale)
         except (httpx.HTTPError, ValueError, KeyError):
             pass
         now = time.time()
         if config.kis_configured():
             try:
-                if need_fx and now - last_fx > 600:
+                if need_fx and now - last_fx > 60:
                     await fetch_fx()
                     last_fx = now
                 if us and (now - last_os > 60 or any(s not in overseas and s not in _excd for s in us)):
                     for s in us:
+                        o = overseas.get(s, {})
+                        if o.get("live") and now - o["at"] < 60:
+                            continue  # 실시간으로 받고 있음
                         await fetch_overseas(s)
                     last_os = now
             except KISError:

@@ -17,6 +17,8 @@ export type Tile = {
   color?: string;
   /** 누르지 않는 칸 */
   static?: boolean;
+  /** 방금 값이 바뀜 (잠깐 반짝임) */
+  flash?: 'up' | 'dn';
   tip: [string, string][];
 };
 
@@ -71,7 +73,7 @@ export default function Heatmap({ tiles, palette, label, onPick }: Props) {
           <button
             key={t.id}
             type="button"
-            className="tile"
+            className={`tile${t.flash ? ` flash-${t.flash}` : ''}`}
             aria-label={`${t.name} ${t.label ?? changeText(t.pct)}`}
             style={{ left: t.x + GAP / 2, top: t.y + GAP / 2, width: w, height: h, background: c.bg, color: c.ink, cursor: t.static ? 'default' : undefined }}
             onClick={() => !t.static && onPick(t.id)}

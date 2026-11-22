@@ -69,11 +69,13 @@ export function ServerProvider({ children }: { children: ReactNode }) {
 export const useServer = () => useContext(ServerCtx);
 
 const REFRESH_EVENT = 'gr-refresh';
+// 서버가 실시간 시세를 받았다고 알려 올 때 (/api/stream). live 로 등록한 usePoll 만 다시 받는다
+const LIVE_EVENT = 'gr-live';
 /** 받아 오고 있는 모든 값을 지금 다시 받는다 (수기 기록을 바꾼 뒤) */
 export const refreshAll = () => window.dispatchEvent(new Event(REFRESH_EVENT));
 
-/** live 일 때만 path 를 ms 마다 받아 온다 */
-export function usePoll<T>(path: string | null, ms: number): { data: T | null; error: string; at: number } {
+/** live 일 때만 path 를 ms 마다 받아 온다. onLive 면 실시간 알림이 올 때도 바로 다시 받는다 */
+export function usePoll<T>(path: string | null, ms: number, onLive = false): { data: T | null; error: string; at: number } {
   const [state, setState] = useState<{ data: T | null; error: string; at: number }>({ data: null, error: '', at: 0 });
   const pathRef = useRef(path);
   pathRef.current = path;
@@ -93,11 +95,42 @@ export function usePoll<T>(path: string | null, ms: number): { data: T | null; e
     const id = setInterval(load, ms);
     // 기록을 바꾸면 refreshAll() 로 바로 다시 받는다
     window.addEventListener(REFRESH_EVENT, load);
+    if (onLive) window.addEventListener(LIVE_EVENT, load);
     return () => {
       alive = false;
       clearInterval(id);
       window.removeEventListener(REFRESH_EVENT, load);
+      window.removeEventListener(LIVE_EVENT, load);
     };
-  }, [path, ms]);
+  }, [path, ms, onLive]);
   return state;
 }
+
+/* ---------- 실시간 알림 (서버 → 화면) ---------- */
+export type Stream = { connected: boolean; at: number; kis: string; upbit: string; overflow: number };
+const OFF: Stream = { connected: false, at: 0, kis: 'off', upbit: 'off', overflow: 0 };
+const StreamCtx = createContext<Stream>(OFF);
+
+/** 로그인·한투 연결이 되어 있으면 /api/stream 을 열어 두고, 알림이 오면 live usePoll 들을 다시 받게 한다 */
+export function StreamProvider({ children }: { children: ReactNode }) {
+  const { live } = useServer();
+  const [st, setSt] = useState<Stream>(OFF);
+  useEffect(() => {
+    if (!live || typeof EventSource === 'undefined') return;
+    const es = new EventSource('/api/stream');
+    es.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        setSt({ connected: true, at: (d.at ?? 0) * 1000, kis: d.kis, upbit: d.upbit, overflow: d.overflow ?? 0 });
+        window.dispatchEvent(new Event(LIVE_EVENT));
+      } catch {
+        /* 무시 */
+      }
+    };
+    es.onopen = () => setSt((s) => ({ ...s, connected: true }));
+    es.onerror = () => setSt((s) => ({ ...s, connected: false })); // 브라우저가 알아서 다시 붙는다
+    return () => es.close();
+  }, [live]);
+  return createElement(StreamCtx.Provider, { value: st }, children);
+}
+export const useStream = () => useContext(StreamCtx);

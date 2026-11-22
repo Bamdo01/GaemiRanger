@@ -269,6 +269,8 @@ async def poll_forever() -> None:
         # 한투 보유 + 수기 계좌의 국내 종목은 매번 받는다
         held = [h["code"] for h in balance.get("holdings", [])] + ledger.kr_codes()
         # 보유 종목은 매번, 나머지는 돌아가며 몇 개씩
+        # 실시간(웹소켓)으로 막 받은 종목은 조회하지 않는다 → 남는 한도를 시장 순회에 쓴다
+        held = [c for c in held if not (quotes.get(c, {}).get("live") and time.time() - quotes[c]["at"] < 5)]
         batch = held + [order[(i + k) % len(order)] for k in range(6)]
         i = (i + 6) % len(order)
         for code in dict.fromkeys(batch):
