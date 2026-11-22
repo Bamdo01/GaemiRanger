@@ -90,7 +90,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
               </option>
             ))}
           </select>
-          {port.usesUsd && <FxChip fx={port.fx} isDefault={port.fxDefault} />}
+          {port.usesUsd && <FxChip fx={port.fx} source={port.fxSource} />}
           <span className="grow" />
           <button type="button" className="btn pri" onClick={() => setDrawer({})} aria-haspopup="dialog">
             ＋ 기록
@@ -407,9 +407,17 @@ function HoldTable({ port, onPick, onAdd }: { port: Portfolio; onPick: (c: strin
 }
 
 /** 환율 칩: 눌러서 바로 고친다 */
-function FxChip({ fx, isDefault }: { fx: number; isDefault: boolean }) {
+function FxChip({ fx, source }: { fx: number; source: string }) {
   const [edit, setEdit] = useState<string | null>(null);
   const [err, setErr] = useState('');
+  const isDefault = source === 'default';
+  // 한투에서 자동으로 받는 중이면 고칠 것 없이 보여 주기만
+  if (source === 'auto')
+    return (
+      <span className="chip fx-chip" title="한투에서 10분마다 받는 원/달러 환율">
+        1달러 {fmt(fx)}원 · 자동
+      </span>
+    );
   if (edit === null)
     return (
       <button type="button" className={`chip fx-chip${isDefault ? ' warn' : ''}`} onClick={() => setEdit(String(fx))} title="눌러서 환율 고치기">

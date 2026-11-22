@@ -387,3 +387,4 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 .dr-accts p { margin: 0; }
 .dr-inline { display: flex; gap: 6px; align-items: center; width: 100%; }
 .dr-inline .in { flex: 1 1 auto; }
+.dr-date { align-self: flex-start; margin: -4px 0 0; }

@@ -72,9 +72,37 @@ def key_of(asset: str, symbol: str) -> str:
     return symbol if asset == "kr" else f"{asset}:{symbol}"
 
 
-def usd(d: dict) -> tuple[float, bool]:
+def usd(d: dict) -> tuple[float, str]:
+    """원/달러 환율과 출처: auto(한투) > manual(사람이 넣음) > default"""
+    from . import prices
+
+    if prices.fx.get("usd"):
+        return prices.fx["usd"], "auto"
     v = float(d["fx"].get("USD") or 0)
-    return (v, False) if v > 0 else (DEFAULT_USD, True)
+    return (v, "manual") if v > 0 else (DEFAULT_USD, "default")
+
+
+def auto_price(asset: str, symbol: str) -> dict | None:
+    """자동 시세 (해외주식은 달러, 코인은 원). 없으면 None"""
+    from . import prices
+
+    if asset == "us":
+        return prices.overseas.get(symbol)
+    if asset == "coin":
+        return prices.coins.get(symbol)
+    return None
+
+
+def symbols(asset: str) -> list[str]:
+    """지금 가진 해외주식·코인 (자동 시세를 받을 것)"""
+    try:
+        return [p["symbol"] for p in replay(load()["records"])["pos"].values() if p["asset"] == asset and p["qty"] > 1e-9]
+    except HTTPException:
+        return []
+
+
+def uses_usd() -> bool:
+    return any(r["currency"] == "USD" for r in load()["records"])
 
 
 # ---------- 계산 ----------
@@ -135,7 +163,7 @@ def kr_codes() -> list[str]:
 def holdings(account: str, quotes: dict) -> dict:
     """한투 잔고와 같은 모양(원화)으로 바꾼 수기 자산. account = 'all' 또는 수기 계좌 id"""
     d = load()
-    fx, fx_default = usd(d)
+    fx, fx_src = usd(d)
     recs = [r for r in d["records"] if account == "all" or r["account"] == account]
     res = replay(recs)
     names = {a["id"]: a["name"] for a in d["accounts"]}
@@ -144,14 +172,22 @@ def holdings(account: str, quotes: dict) -> dict:
         if p["qty"] <= 1e-9:
             continue
         rate = fx if p["currency"] == "USD" else 1.0
+        auto = None
         if p["asset"] == "kr":
             q = quotes.get(p["symbol"]) or {}
             price, prev = q.get("price") or p["last"], q.get("prev") or q.get("price") or p["last"]
             sector = q.get("sector") or "기타"
         else:
-            mp = d["prices"].get(p["key"], {}).get("price")
-            price = prev = mp or p["last"]
             sector = ASSETS[p["asset"]]
+            auto = auto_price(p["asset"], p["symbol"])
+            if auto:
+                # 자동 시세의 통화(해외 달러, 코인 원)를 이 종목의 기록 통화로 맞춘다
+                src_usd = p["asset"] == "us"
+                conv = (1.0 if src_usd else 1 / fx) if p["currency"] == "USD" else (fx if src_usd else 1.0)
+                price, prev = auto["price"] * conv, auto["prev"] * conv
+            else:
+                mp = d["prices"].get(p["key"], {}).get("price")
+                price = prev = mp or p["last"]
         out.append(
             {
                 "code": p["key"],
@@ -165,7 +201,7 @@ def holdings(account: str, quotes: dict) -> dict:
                 "sellable": 0,
                 "currency": p["currency"],
                 "rawPrice": price,  # 원래 통화의 현재가 (화면에서 고칠 때)
-                "manualPrice": p["asset"] != "kr",
+                "manualPrice": p["asset"] != "kr" and not auto,
                 "accounts": [{"id": a, "name": names.get(a, a), "qty": q} for a, q in p.get("accounts", {}).items()],
             }
         )
@@ -191,7 +227,7 @@ def holdings(account: str, quotes: dict) -> dict:
             )
     realized = sum(p["realized"] * (fx if p["currency"] == "USD" else 1) for p in res["pos"].values())
     dividends = sum(r["amount"] * (fx if r["currency"] == "USD" else 1) for r in res["divs"])
-    return {"holdings": out, "cash": cash, "realized": realized, "dividends": dividends, "fx": fx, "usesUsd": any(r["currency"] == "USD" for r in d["records"]), "fxDefault": fx_default and any(r["currency"] == "USD" for r in recs)}
+    return {"holdings": out, "cash": cash, "realized": realized, "dividends": dividends, "fx": fx, "fxSource": fx_src, "usesUsd": any(r["currency"] == "USD" for r in d["records"]), "fxDefault": fx_src == "default" and any(r["currency"] == "USD" for r in recs)}
 
 
 # ---------- 바꾸기 ----------
@@ -345,7 +381,7 @@ async def set_price(key: str, v: float) -> None:
 def view() -> dict:
     """기록 화면용: 계좌, 기록(최근 것 먼저), 환율, 직접 넣는 현재가 목록"""
     d = load()
-    fx, fx_default = usd(d)
+    fx, fx_src = usd(d)
     try:
         pos = replay(d["records"])["pos"]
     except HTTPException:
@@ -353,7 +389,7 @@ def view() -> dict:
     manual = [
         {"key": p["key"], "name": p["name"], "asset": p["asset"], "currency": p["currency"], "price": d["prices"].get(p["key"], {}).get("price"), "last": p["last"]}
         for p in pos.values()
-        if p["asset"] != "kr" and p["qty"] > 1e-9
+        if p["asset"] != "kr" and p["qty"] > 1e-9 and not auto_price(p["asset"], p["symbol"])
     ]
     recs = sorted(d["records"], key=lambda x: (x["date"], x["n"]), reverse=True)
-    return {"accounts": d["accounts"], "records": recs, "fx": fx, "fxDefault": fx_default, "manual": manual, "assets": ASSETS}
+    return {"accounts": d["accounts"], "records": recs, "fx": fx, "fxSource": fx_src, "fxDefault": fx_src == "default", "manual": manual, "assets": ASSETS}

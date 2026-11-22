@@ -36,7 +36,7 @@ export const qtyText = (r: { qty: number; asset: string }) =>
 
 /** 지금 시세로 계산한 내 자산 */
 export function usePortfolio(stocks: Stock[], account = 'all') {
-  const { holdings, cash, loaded, error, accounts, realized, dividends, fx, usesUsd, fxDefault } = useHoldings(account);
+  const { holdings, cash, loaded, error, accounts, realized, dividends, fx, fxSource, usesUsd, fxDefault } = useHoldings(account);
   return useMemo(() => {
     const by = new Map(stocks.map((s) => [s.code, s]));
     const base = holdings.map((h) => {
@@ -74,6 +74,7 @@ export function usePortfolio(stocks: Stock[], account = 'all') {
       realized,
       dividends,
       fx,
+      fxSource,
       usesUsd,
       fxDefault,
       cash,
@@ -85,7 +86,7 @@ export function usePortfolio(stocks: Stock[], account = 'all') {
       todayPnl,
       todayPct: stockValue - todayPnl ? (todayPnl / (stockValue - todayPnl)) * 100 : 0,
     };
-  }, [stocks, holdings, cash, loaded, error, accounts, realized, dividends, fx, usesUsd, fxDefault]);
+  }, [stocks, holdings, cash, loaded, error, accounts, realized, dividends, fx, fxSource, usesUsd, fxDefault]);
 }
 export type Portfolio = ReturnType<typeof usePortfolio>;
 

@@ -6,13 +6,23 @@ import { fmt } from './lib';
 // (2026-11-22 사용자: 맨 아래 입력 칸은 불편. 사용자 편의 우선)
 type Account = { id: string; name: string };
 type Kind = 'buy' | 'sell' | 'div' | 'value';
+/** 화면에서만 쓰는 종류: 가진 것 넣기 = 오늘 날짜 매수 (평단가로) */
+type FormKind = Kind | 'hold';
 type Rec = { id: string; kind: Kind; date: string; account: string; asset: string; symbol: string; name: string; qty: number; price: number; fee: number; amount: number; currency: string };
 type View = { accounts: Account[]; records: Rec[] };
 export type Tab = 'new' | 'list' | 'accounts';
-export type Prefill = { kind?: Kind; account?: string; asset?: string; symbol?: string; name?: string; tab?: Tab };
+export type Prefill = { kind?: FormKind; account?: string; asset?: string; symbol?: string; name?: string; tab?: Tab };
 export type Candidate = { code: string; name: string };
 
 const KINDS: [Kind, string][] = [
+  ['buy', '매수'],
+  ['sell', '매도'],
+  ['div', '배당·이자'],
+  ['value', '금액'],
+];
+// 2026-11-22 사용자: 날짜 없이 평단가로 넣기 → 맨 앞
+const FORM_KINDS: [FormKind, string][] = [
+  ['hold', '가진 것'],
   ['buy', '매수'],
   ['sell', '매도'],
   ['div', '배당·이자'],
@@ -30,10 +40,10 @@ const VALUE: [string, string][] = [
 const today = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
 const num = (n: number) => n.toLocaleString('ko-KR', { maximumFractionDigits: 8 });
 const money = (n: number, cur: string) => (cur === 'USD' ? `$${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : `${fmt(n)}원`);
-const kindLabel = (k: Kind) => KINDS.find(([x]) => x === k)?.[1] ?? k;
+const kindLabel = (k: FormKind) => (k === 'hold' ? '가진 것' : KINDS.find(([x]) => x === k)?.[1] ?? k);
 
-type Form = { kind: Kind; date: string; account: string; asset: string; symbol: string; name: string; qty: string; price: string; fee: string; amount: string; currency: string };
-const blank = (account = ''): Form => ({ kind: 'buy', date: today(), account, asset: 'kr', symbol: '', name: '', qty: '', price: '', fee: '', amount: '', currency: 'KRW' });
+type Form = { kind: FormKind; date: string; account: string; asset: string; symbol: string; name: string; qty: string; price: string; fee: string; amount: string; currency: string };
+const blank = (account = ''): Form => ({ kind: 'hold', date: today(), account, asset: 'kr', symbol: '', name: '', qty: '', price: '', fee: '', amount: '', currency: 'KRW' });
 
 export default function LedgerDrawer({ open, prefill, onClose, candidates }: { open: boolean; prefill: Prefill | null; onClose: () => void; candidates: Candidate[] }) {
   const srv = usePoll<View>(open ? '/api/ledger' : null, 60_000);
@@ -42,7 +52,9 @@ export default function LedgerDrawer({ open, prefill, onClose, candidates }: { o
   const [form, setForm] = useState<Form>(blank());
   const [editing, setEditing] = useState<string | null>(null);
   const [err, setErr] = useState('');
-  const [toast, setToast] = useState('');
+  // 같은 글자가 연달아 와도 다시 보이게 번호를 붙인다
+  const [toast, setToastRaw] = useState<{ msg: string; n: number }>({ msg: '', n: 0 });
+  const setToast = (msg: string) => setToastRaw((t) => ({ msg, n: t.n + 1 }));
   const [busy, setBusy] = useState(false);
   const panel = useRef<HTMLElement>(null);
 
@@ -52,7 +64,7 @@ export default function LedgerDrawer({ open, prefill, onClose, candidates }: { o
     setErr('');
     setEditing(null);
     setTab(prefill?.tab ?? 'new');
-    setForm((f) => ({ ...blank(prefill?.account ?? f.account), kind: prefill?.kind ?? 'buy', asset: prefill?.asset ?? 'kr', symbol: prefill?.symbol ?? '', name: prefill?.name ?? '', currency: prefill?.asset === 'us' ? 'USD' : 'KRW' }));
+    setForm((f) => ({ ...blank(prefill?.account ?? f.account), kind: prefill?.kind ?? 'hold', asset: prefill?.asset ?? 'kr', symbol: prefill?.symbol ?? '', name: prefill?.name ?? '', currency: prefill?.asset === 'us' ? 'USD' : 'KRW' }));
     panel.current?.focus();
   }, [open, prefill]);
   // 계좌가 없거나 고른 계좌가 사라지면 첫 계좌로
@@ -66,10 +78,10 @@ export default function LedgerDrawer({ open, prefill, onClose, candidates }: { o
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
   useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(''), 2500);
+    if (!toast.msg) return;
+    const id = setTimeout(() => setToastRaw((t) => ({ ...t, msg: '' })), 2500);
     return () => clearTimeout(id);
-  }, [toast]);
+  }, [toast.n, toast.msg]);
 
   const run = async (fn: () => Promise<unknown>, done?: string) => {
     setBusy(true);
@@ -112,9 +124,9 @@ export default function LedgerDrawer({ open, prefill, onClose, candidates }: { o
           </button>
         ))}
       </div>
-      {toast && (
-        <p className="dr-toast" role="status">
-          {toast}
+      {toast.msg && (
+        <p className="dr-toast" role="status" key={toast.n}>
+          {toast.msg}
         </p>
       )}
       <div className="dr-body">
@@ -149,7 +161,7 @@ export default function LedgerDrawer({ open, prefill, onClose, candidates }: { o
               setErr('');
             }}
             onSubmit={async (body) => {
-              const ok = await run(() => (editing ? put(`/api/ledger/records/${editing}`, body) : post('/api/ledger/records', body)), editing ? '고쳤습니다' : `${kindLabel(form.kind)} 기록을 추가했습니다`);
+              const ok = await run(() => (editing ? put(`/api/ledger/records/${editing}`, body) : post('/api/ledger/records', body)), editing ? '고쳤습니다' : form.kind === 'hold' ? '넣었습니다' : `${kindLabel(form.kind)} 기록을 추가했습니다`);
               if (ok) {
                 // 같은 계좌·종류로 다음 기록을 바로 넣을 수 있게 숫자만 비운다
                 setForm((f) => ({ ...f, qty: '', price: '', fee: '', amount: '', ...(editing ? { symbol: '', name: '' } : {}) }));
@@ -219,6 +231,7 @@ function RecordForm({
     setForm((f) => {
       const n = { ...f, [k]: val };
       if (k === 'kind') {
+        if (val === 'hold') n.date = today();
         if (val === 'value') n.asset = 'cash';
         else if (val !== 'div' && !TRADE.some(([a]) => a === f.asset)) n.asset = 'kr';
       }
@@ -229,7 +242,9 @@ function RecordForm({
       }
       return n;
     });
-  const trade = form.kind === 'buy' || form.kind === 'sell';
+  const hold = form.kind === 'hold';
+  const trade = hold || form.kind === 'buy' || form.kind === 'sell';
+  const [dateOpen, setDateOpen] = useState(false);
   const total = (Number(form.qty) || 0) * (Number(form.price) || 0) + (form.kind === 'buy' ? Number(form.fee) || 0 : -(Number(form.fee) || 0));
   return (
     <form
@@ -237,7 +252,7 @@ function RecordForm({
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({
-          kind: form.kind,
+          kind: hold ? 'buy' : form.kind,
           date: form.date,
           account: form.account,
           asset: form.asset,
@@ -251,7 +266,8 @@ function RecordForm({
         });
       }}
     >
-      <Seg label="기록 종류" list={KINDS} cur={form.kind} onPick={(k) => set('kind', k)} />
+      <Seg label="기록 종류" list={editing ? KINDS : FORM_KINDS} cur={form.kind} onPick={(k) => set('kind', k)} />
+      {hold && <p className="sub">이미 가진 종목을 수량과 평단가로 넣습니다. 날짜는 필요 없습니다.</p>}
       <div className="dr-chips" role="group" aria-label="계좌">
         {v.accounts.map((a) => (
           <button key={a.id} type="button" className="chip" aria-pressed={form.account === a.id} onClick={() => set('account', a.id)}>
@@ -284,21 +300,25 @@ function RecordForm({
             <Field label={form.asset === 'coin' ? '수량 (개)' : '수량 (주)'}>
               <input className="in big" inputMode="decimal" value={form.qty} onChange={(e) => set('qty', e.target.value)} />
             </Field>
-            <Field label={`단가 (${form.currency === 'USD' ? '달러' : '원'})`}>
+            <Field label={`${hold ? '평단가' : '단가'} (${form.currency === 'USD' ? '달러' : '원'})`}>
               <input className="in big" inputMode="decimal" value={form.price} onChange={(e) => set('price', e.target.value)} />
             </Field>
-            <Field label="수수료·세금">
-              <input className="in" inputMode="decimal" value={form.fee} onChange={(e) => set('fee', e.target.value)} placeholder="0" />
-            </Field>
+            {!hold && (
+              <Field label="수수료·세금">
+                <input className="in" inputMode="decimal" value={form.fee} onChange={(e) => set('fee', e.target.value)} placeholder="0" />
+              </Field>
+            )}
           </>
         ) : (
           <Field label={form.kind === 'value' ? `지금 금액 (${form.currency === 'USD' ? '달러' : '원'})` : `받은 금액 (${form.currency === 'USD' ? '달러' : '원'})`}>
             <input className="in big" inputMode="decimal" value={form.amount} onChange={(e) => set('amount', e.target.value)} />
           </Field>
         )}
-        <Field label="날짜">
-          <input className="in" type="date" value={form.date} max={today()} onChange={(e) => set('date', e.target.value)} />
-        </Field>
+        {!hold && (dateOpen || form.date !== today()) && (
+          <Field label="날짜">
+            <input className="in" type="date" value={form.date} max={today()} onChange={(e) => set('date', e.target.value)} />
+          </Field>
+        )}
         {form.asset !== 'kr' && (
           <Field label="통화">
             <select className="in" value={form.currency} onChange={(e) => set('currency', e.target.value)}>
@@ -309,6 +329,11 @@ function RecordForm({
         )}
       </div>
 
+      {!hold && !dateOpen && form.date === today() && (
+        <button type="button" className="link dr-date" onClick={() => setDateOpen(true)}>
+          날짜: 오늘 (바꾸기)
+        </button>
+      )}
       {trade && total > 0 && (
         <p className="dr-total">
           {kindLabel(form.kind)} 합계 <b>{money(total, form.currency)}</b>
@@ -321,7 +346,7 @@ function RecordForm({
       )}
       <div className="dr-actions">
         <button type="submit" className="btn pri" disabled={busy}>
-          {editing ? '고친 것 저장' : `${kindLabel(form.kind)} 기록`}
+          {editing ? '고친 것 저장' : hold ? '가진 것 넣기' : `${kindLabel(form.kind)} 기록`}
         </button>
         {editing && (
           <button type="button" className="btn" onClick={onCancel}>
@@ -329,7 +354,7 @@ function RecordForm({
           </button>
         )}
       </div>
-      {!editing && <p className="sub">저장해도 서랍은 열려 있어 다음 기록을 바로 넣을 수 있습니다. 이미 가진 자산은 산 날짜로 매수 한 줄을 넣으면 됩니다.</p>}
+      {!editing && <p className="sub">저장해도 서랍은 열려 있어 다음 것을 바로 넣을 수 있습니다. 해외주식·코인 시세와 환율은 자동으로 받습니다.</p>}
     </form>
   );
 }
