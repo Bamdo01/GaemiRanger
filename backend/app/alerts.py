@@ -3,7 +3,7 @@
 매분 AI 없이 규칙으로 본다 (빠르고 공짜):
 - 보유·규칙 종목 급등락: 정한 분(기본 5분) 사이 ±정한 %(기본 3%)
 - 거래량 급증 (국내): 최근 5분 거래량이 오늘 5분 평균의 정한 배(기본 3배)
-- 보유 국내 종목의 새 뉴스 (한투 시황·뉴스 제목)
+- 보유 국내 종목의 새 뉴스 (한투 시황·뉴스 제목), 보유 미국 종목의 새 뉴스 (한투 해외뉴스종합)
 - 보유 국내 종목의 새 공시 (OpenDART, .env 의 DART_API_KEY 가 있을 때만)
 - 내 자산 오늘 손익이 ±정한 %(기본 3%)를 넘음 (3%, 6%, 9% … 단계마다 한 번)
 - 규칙 발동 (rules 가 바로 부른다. 확인 대기는 5분 안에 눌러야 하므로 AI 없이 바로)
@@ -55,7 +55,7 @@ state = {"lastRun": 0.0, "lastError": "", "news": "", "dart": "", "aiHour": "", 
 _hist: dict[str, deque] = {}  # 코드 → (시각, 가격, 누적거래량)
 _cool: dict[str, float] = {}
 _day = {"date": "", "level": 0}
-_seen: dict[str, list[str]] = {"news": [], "dart": []}
+_seen: dict[str, list[str]] = {"news": [], "dart": [], "us": []}
 _http: httpx.AsyncClient | None = None
 _seq = [0]
 
@@ -392,6 +392,57 @@ async def _check_news(port: dict | None, s: dict) -> list[dict]:
     return evs[:8]
 
 
+US_NEWS = "/uapi/overseas-price/v1/quotations/news-title"  # 한투 해외뉴스종합(제목), 한국어 제목 (2026-11-23 실전 확인)
+_us_ex: dict[str, str] = {}  # 뉴스에서 찾은 거래소
+
+
+async def _check_us_news(s: dict) -> list[dict]:
+    """보유 미국 종목 뉴스. 종목을 돌아가며 1분에 2개씩 (종목별 조회)"""
+    from . import prices
+
+    if not s["news"] or not config.kis_configured():
+        return []
+    syms = prices._symbols()[0]
+    if not syms:
+        return []
+    k = (int(time.time() // 60) * 2) % len(syms)
+    pick = list(dict.fromkeys((syms + syms)[k : k + 2]))
+    first = not _seen.get("us")
+    seen_l = _seen.setdefault("us", [])
+    seen = set(seen_l)
+    recent_days = {_now().strftime("%Y%m%d"), datetime.fromtimestamp(time.time() - 86400, market.KST).strftime("%Y%m%d")}
+    evs = []
+    for sym in pick:
+        # 거래소 코드가 꼭 있어야 결과가 나온다 (빈 값이면 0건). 모르면 나스닥→뉴욕→아멕스 순서로
+        known = prices._excd.get(sym) or _us_ex.get(sym)
+        rows: list[dict] = []
+        try:
+            for ex in [known] if known else list(prices.EXCHANGES):
+                p = {"INFO_GB": "", "CLASS_CD": "", "NATION_CD": "", "EXCHANGE_CD": ex, "SYMB": sym, "DATA_DT": "", "DATA_TM": "", "CTS": ""}
+                rows = (await kis.get(US_NEWS, "HHPSTH60100C1", p)).get("outblock1") or []
+                if rows:
+                    _us_ex[sym] = ex
+                    break
+        except KISError as e:
+            state["news"] = f"미국 뉴스 오류 {e}"
+            continue
+        for r in rows:
+            nk = r.get("news_key", "")
+            if not nk or nk in seen:
+                continue
+            seen.add(nk)
+            seen_l.append(nk)
+            if first or r.get("symb") != sym or r.get("data_dt") not in recent_days:
+                continue
+            name = r.get("symb_name") or sym
+            tm = r.get("data_tm", "")
+            e = _new("news", f"{name}({sym}): {(r.get('title') or '').strip()}", f"us:{sym}", name, f"{r.get('source', '')} {tm[:2]}:{tm[2:4]} (한국 시각)".strip())
+            if not _cool_ok(f"news:us:{sym}"):
+                e["mute"] = True
+            evs.append(e)
+    return evs[:6]
+
+
 async def _check_dart(port: dict | None, s: dict) -> list[dict]:
     global _http
     if not s["disclosure"] or not config.DART_API_KEY:
@@ -439,6 +490,7 @@ async def tick() -> None:
     state["watching"] = len(ts)
     evs = _check_moves(ts, s) + _check_day(port, s)
     evs += await _check_news(port, s)
+    evs += await _check_us_news(s)
     evs += await _check_dart(port, s)
     _save_seen()
     state["lastRun"] = time.time()
