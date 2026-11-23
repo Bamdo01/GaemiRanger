@@ -53,8 +53,8 @@ async def main() -> None:
         config.TELEGRAM_CHAT_ID = cid
         print(f".env 에 TELEGRAM_CHAT_ID={cid} 를 써 넣었습니다.")
     try:
-        await telegram.send("[개미레인저] 연결됐습니다. 앞으로 로그인할 때 이 대화방으로 승인 요청이 옵니다.")
-        print("시험 메시지를 보냈습니다. 텔레그램을 확인하세요. 이제 서버를 다시 켜면 로그인에 텔레그램 승인이 필요합니다.")
+        await telegram.send("[개미레인저] 연결됐습니다. 앞으로 이 대화방으로 알림이 옵니다.")
+        print("시험 메시지를 보냈습니다. 텔레그램을 확인하세요.")
     except RuntimeError as e:
         print(f"시험 메시지를 보내지 못했습니다: {e}")
     await telegram.close()

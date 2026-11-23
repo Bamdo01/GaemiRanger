@@ -146,7 +146,7 @@ def _short_agent(ua: str) -> str:
 
 async def login(req: Request, res: Response, password: str) -> dict:
     await _check_password_or_fail(req, password)
-    if not telegram.configured():
+    if not (telegram.configured() and config.TELEGRAM_LOGIN_APPROVAL):
         _activity(req, "로그인", "성공")
         _set_session(res)
         return {"ok": True}

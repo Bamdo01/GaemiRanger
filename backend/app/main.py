@@ -110,7 +110,7 @@ def status(req: Request):
         "server": True,
         "loggedIn": auth.logged_in(req),
         "loginReady": config.login_configured(),
-        "telegram": telegram.configured(),
+        "telegram": telegram.configured() and config.TELEGRAM_LOGIN_APPROVAL,  # 로그인 화면의 승인 안내용
         "recovery": auth.recovery_left() > 0,
         "kis": {
             "configured": config.kis_configured(),
