@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AiReview from './AiReview';
+import { AlertsCard } from './Alerts';
 import Heatmap, { Legend, type Tile } from './Heatmap';
 import { useMarket } from './hooks';
 import { arrow, changeText, fmt, kstTime, signed, tone, type Palette } from './lib';
@@ -174,6 +175,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
               </button>
             </section>
           )}
+          {live && <AlertsCard />}
           {live && has && <MovesCard port={port} />}
           {has && <Checks port={port} kospiPct={kospiPct} />}
           <Weights port={port} />

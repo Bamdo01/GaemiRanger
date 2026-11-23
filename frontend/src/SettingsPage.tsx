@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { post, put, refreshAll, usePoll, useServer } from './api';
 import { fmt } from './lib';
+import { AlertSettings } from './Alerts';
 
 // 설정: 비상 정지(C3), 주문 한도(C1), 로그인(C6), 연결 상태, 화면·모드(C5)
 // 한도를 바꾸거나 비상 정지를 풀 때, 모든 기기 로그아웃은 비밀번호를 다시 받는다. 비상 정지 켜기는 바로
@@ -62,10 +63,11 @@ export default function SettingsPage() {
             <Row k="실시간 (업비트)" v={s.realtime.upbit === 'on' ? '연결' : s.realtime.upbit === 'off' ? '가진 코인 없음' : s.realtime.upbit} ok={s.realtime.upbit !== 'off' ? s.realtime.upbit === 'on' : undefined} />
             {s.realtime.overflow.length > 0 && <Row k="실시간 자리 부족" v={`${s.realtime.overflow.length}종목은 조회로 받는 중`} ok={false} />}
             <Row k="규칙" v={s.rulesHalted ? '모두 정지 중' : '감시 중'} ok={!s.rulesHalted} link={{ to: '/rules', label: '규칙 화면' }} />
-            <Row k="텔레그램 알림" v={s.telegram ? '연결됨' : '꺼짐 (쓰지 않기로 함)'} />
+            <Row k="텔레그램 알림" v={s.telegram ? '연결됨' : '봇 미연결 (backend/.env)'} ok={s.telegram} />
             <Row k="화면 색" v="밤하늘 (고정)" />
           </dl>
         </section>
+        <AlertSettings />
         <Login s={s} logins={(logins.data?.items ?? []).filter((x) => x.type === 'login').slice(0, 8)} onDone={done} />
       </div>
     </div>

@@ -278,6 +278,10 @@ async def _fire(r: dict, price: float) -> None:
         r["state"] = "fired" if res["ok"] else "failed"
         r["result"] = f"자동 주문 접수 {res.get('orderNo', '')}".strip() if res["ok"] else f"자동 주문 실패: {res['msg']}"
         _event({"rule": r["id"], "event": "발동", "mode": "자동 주문", "price": price, "text": text, **res})
+    from . import alerts
+
+    mode = {"notify": "알림만", "confirm": "확인 후 주문"}.get(r["mode"], "자동 주문")
+    alerts.rule_fired(r, price, text + (f" → {r['result']}" if r["mode"] == "auto" else ""), mode)
     realtime._bump()  # 화면에 바로 알린다
 
 

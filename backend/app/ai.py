@@ -114,6 +114,10 @@ def context(port: dict | None, rules_text: list[str]) -> str:
     if sectors:
         lines.append("[업종·종류 비중] " + ", ".join(f"{k2} {v / total * 100:.1f}%" for k2, v in sorted(sectors.items(), key=lambda x: -x[1])))
     lines.append("[걸어 둔 규칙] " + ("; ".join(rules_text) if rules_text else "없음"))
+    from . import alerts  # alerts 가 ai 를 부르므로 늦게
+
+    recent = alerts.for_ai()
+    lines.append("[최근 24시간 알림 (급등락·거래량·뉴스 제목·공시·규칙)]" + ("\n" + "\n".join("- " + x for x in recent) if recent else " 없음"))
     lines.append("(해외주식·코인·금은 원화로 바꾼 값. 해외 평단은 지금 환율로 환산)")
     return "\n".join(lines)
 
@@ -255,3 +259,27 @@ async def _claude_code(system: str, msgs: list[dict]) -> AsyncIterator[str]:
     finally:
         if proc.returncode is None:
             proc.kill()
+
+
+# ---------- 알림 요약 (alerts 가 사건이 있을 때만 부른다) ----------
+BRIEF = """방금 아래 알림이 생겼다. 위 포트폴리오 숫자를 근거로 꼭 세 줄로 답해라. 줄마다 '- '로 시작, 한 줄은 한 문장.
+1) 무슨 일인지 (알림에 있는 사실만. 뉴스는 제목만 있으니 본문을 지어내지 말 것)
+2) 내 포트폴리오에 주는 영향 (그 종목 비중, 오늘 손익 같은 숫자로)
+3) 지금 확인해 볼 것 (사라·팔라는 말 없이)
+
+[알림]
+"""
+
+
+async def brief(events: list[str], ctx: str) -> str:
+    """알림 묶음을 세 줄로. 하루 한도(AI_DAILY_LIMIT)에 같이 센다"""
+    _count_one()
+    system = SYSTEM + "\n\n[사용자 포트폴리오]\n" + ctx
+    msgs = [{"role": "user", "content": BRIEF + "\n".join(events)}]
+    if backend() == "claude-code":
+        out = []
+        async for t in _claude_code(system, msgs):
+            out.append(t)
+        return "".join(out)
+    r = await client().messages.create(model=config.AI_MODEL, max_tokens=800, system=system, messages=msgs)
+    return "".join(b.text for b in r.content if b.type == "text")

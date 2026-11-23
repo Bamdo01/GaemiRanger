@@ -90,6 +90,8 @@ AI_DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "100"))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 # 텔레그램은 알림용. 로그인 승인(2차 인증)은 이 값을 on 으로 둘 때만 (기본 꺼짐)
+# 공시 알림 (금감원 OpenDART 무료 키, opendart.fss.or.kr). 없으면 공시 알림만 빠진다
+DART_API_KEY = os.getenv("DART_API_KEY", "").strip()
 TELEGRAM_LOGIN_APPROVAL = os.getenv("TELEGRAM_LOGIN_APPROVAL", "").strip().lower() in ("1", "true", "on", "yes")
 
 

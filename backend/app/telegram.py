@@ -1,4 +1,4 @@
-"""텔레그램 봇: 로그인 승인 요청을 보내고, [승인]/[거절] 버튼 누름을 받는다.
+"""텔레그램 봇: 알림(alerts)을 보내고, 로그인 승인(켰을 때만)의 [승인]/[거절] 버튼 누름을 받는다.
 
 - 봇 토큰과 내 chat id 는 .env 에만 둔다 (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID).
 - 서버가 집 PC 에 있어도 되게 웹훅 대신 getUpdates(긴 폴링)로 받는다.
@@ -51,9 +51,11 @@ async def call(method: str, **params) -> dict:
     return d["result"]
 
 
-async def send(text: str, buttons: list[tuple[str, str]] | None = None) -> int:
-    """내 대화방에 보내고 message_id 를 돌려준다. buttons = [(글자, callback_data)]"""
-    p: dict = {"chat_id": config.TELEGRAM_CHAT_ID, "text": text}
+async def send(text: str, buttons: list[tuple[str, str]] | None = None, silent: bool = False) -> int:
+    """내 대화방에 보내고 message_id 를 돌려준다. buttons = [(글자, callback_data)], silent = 소리 없이"""
+    p: dict = {"chat_id": config.TELEGRAM_CHAT_ID, "text": text, "disable_web_page_preview": True}
+    if silent:
+        p["disable_notification"] = True
     if buttons:
         p["reply_markup"] = {"inline_keyboard": [[{"text": t, "callback_data": d} for t, d in buttons]]}
     return (await call("sendMessage", **p))["message_id"]
@@ -72,7 +74,7 @@ async def notify(text: str) -> None:
 
 async def edit(message_id: int, text: str) -> None:
     try:
-        await call("editMessageText", chat_id=config.TELEGRAM_CHAT_ID, message_id=message_id, text=text)
+        await call("editMessageText", chat_id=config.TELEGRAM_CHAT_ID, message_id=message_id, text=text, disable_web_page_preview=True)
     except RuntimeError:
         pass
 

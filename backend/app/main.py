@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import activity, ai, auth, config, ledger, market, orders, prices, realtime, rules, settings, telegram
+from . import activity, ai, alerts, auth, config, ledger, market, orders, prices, realtime, rules, settings, telegram
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
@@ -29,10 +29,12 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(realtime.kis_forever()),
         asyncio.create_task(realtime.upbit_forever()),
         asyncio.create_task(rules.run_forever()),
+        asyncio.create_task(alerts.run_forever()),
     ]
     yield
     for t in tasks:
         t.cancel()
+    await alerts.close()
     await kis.close()
     await telegram.close()
     await prices.close()
@@ -452,6 +454,25 @@ async def ai_chat(b: ai.ChatIn):
     return StreamingResponse(gen, media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
+# ---------- 알림 ----------
+@app.get("/api/alerts", dependencies=api)
+def get_alerts(limit: int = 50):
+    return alerts.view(max(1, min(limit, 300)))
+
+
+@app.put("/api/alerts/settings", dependencies=api)
+def put_alert_settings(b: alerts.SettingsIn):
+    changed = alerts.save_settings(b)
+    if changed:
+        activity.log("setting", "알림 기준 바꿈: " + ", ".join(f"{k} {a}→{v}" for k, (a, v) in changed.items()))
+    return alerts.view()
+
+
+@app.post("/api/alerts/test", dependencies=api)
+async def post_alert_test():
+    return await alerts.test()
+
+
 # ---------- 규칙 ----------
 class StateIn(BaseModel):
     state: str
@@ -512,7 +533,7 @@ async def stream(req: Request):
             if v != last:
                 last = v
                 hb = time.time()
-                info = {"v": v, "at": realtime.state["lastTick"], "kis": realtime.state["kis"], "upbit": realtime.state["upbit"], "overflow": len(realtime.state["overflow"]), "rulesPending": len(rules.pending)}
+                info = {"v": v, "at": realtime.state["lastTick"], "kis": realtime.state["kis"], "upbit": realtime.state["upbit"], "overflow": len(realtime.state["overflow"]), "rulesPending": len(rules.pending), "alert": alerts.recent[-1]["id"] if alerts.recent else ""}
                 yield f"data: {json.dumps(info)}\n\n"
             elif time.time() - hb > 14:
                 yield ": ping\n\n"  # 연결 유지
