@@ -580,3 +580,6 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 .al-aitext { background: rgba(255, 255, 255, 0.04); border-radius: 8px; padding: 8px 10px; }
 .al-aitext p { margin: 4px 0 0; line-height: 1.5; }
 @media (max-width: 640px) { .al-more { padding-left: 4px; } }
+
+/* 자산 지킴이 */
+.guard-risks { margin: 0 0 10px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; line-height: 1.45; }

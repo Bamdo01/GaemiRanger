@@ -261,6 +261,21 @@ async def _claude_code(system: str, msgs: list[dict]) -> AsyncIterator[str]:
             proc.kill()
 
 
+# ---------- 한 번 묻고 글 전체를 받기 (지킴이·텔레그램) ----------
+async def ask_once(prompt: str, ctx: str) -> str:
+    """하루 한도(AI_DAILY_LIMIT)에 같이 센다. ctx 는 포트폴리오 요약 (없으면 빈 글)"""
+    _count_one()
+    system = SYSTEM + ("\n\n[사용자 포트폴리오]\n" + ctx if ctx else "")
+    msgs = [{"role": "user", "content": prompt}]
+    if backend() == "claude-code":
+        out = []
+        async for t in _claude_code(system, msgs):
+            out.append(t)
+        return "".join(out)
+    r = await client().messages.create(model=config.AI_MODEL, max_tokens=1200, system=system, messages=msgs)
+    return "".join(b.text for b in r.content if b.type == "text")
+
+
 # ---------- 알림 요약 (alerts 가 사건이 있을 때만 부른다) ----------
 BRIEF = """방금 아래 알림이 생겼다. 위 포트폴리오 숫자를 근거로 꼭 세 줄로 답해라. 줄마다 '- '로 시작, 한 줄은 한 문장.
 1) 무슨 일인지 (알림에 있는 사실만. 뉴스는 제목만 있으니 본문을 지어내지 말 것)

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { post, put, refreshAll, usePoll, useServer } from './api';
 import { fmt } from './lib';
 import { AlertSettings } from './Alerts';
+import { GuardSettings } from './Guard';
 
 // 설정: 비상 정지(C3), 주문 한도(C1), 로그인(C6), 연결 상태, 화면·모드(C5)
 // 한도를 바꾸거나 비상 정지를 풀 때, 모든 기기 로그아웃은 비밀번호를 다시 받는다. 비상 정지 켜기는 바로
@@ -67,6 +68,7 @@ export default function SettingsPage() {
             <Row k="화면 색" v="밤하늘 (고정)" />
           </dl>
         </section>
+        <GuardSettings />
         <AlertSettings />
         <Login s={s} logins={(logins.data?.items ?? []).filter((x) => x.type === 'login').slice(0, 8)} onDone={done} />
       </div>

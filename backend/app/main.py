@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import activity, ai, alerts, auth, config, ledger, market, orders, prices, realtime, rules, settings, telegram
+from . import activity, ai, alerts, auth, guard, config, ledger, market, orders, prices, realtime, rules, settings, telegram
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
@@ -30,6 +30,7 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(realtime.upbit_forever()),
         asyncio.create_task(rules.run_forever()),
         asyncio.create_task(alerts.run_forever()),
+        asyncio.create_task(guard.run_forever()),
     ]
     yield
     for t in tasks:
@@ -452,6 +453,23 @@ async def ai_chat(b: ai.ChatIn):
     q = "세 줄 리뷰" if b.review else b.messages[-1].content[:60]
     activity.log("ai", f"AI {ai.INVESTORS[b.investor].split(' (')[0]} 관점: {q}")
     return StreamingResponse(gen, media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
+# ---------- 자산 지킴이 ----------
+@app.get("/api/guard", dependencies=api)
+def get_guard():
+    return guard.view()
+
+
+@app.put("/api/guard", dependencies=api)
+def put_guard(b: guard.AnswerIn):
+    return guard.set_answer(b)
+
+
+@app.post("/api/guard/ask", dependencies=api)
+async def post_guard_ask():
+    """아직 안 정한 기준을 텔레그램으로 지금 묻기"""
+    return {"sent": await guard.ask_next(force=True)}
 
 
 # ---------- 알림 ----------

@@ -51,13 +51,19 @@ async def call(method: str, **params) -> dict:
     return d["result"]
 
 
-async def send(text: str, buttons: list[tuple[str, str]] | None = None, silent: bool = False) -> int:
-    """내 대화방에 보내고 message_id 를 돌려준다. buttons = [(글자, callback_data)], silent = 소리 없이"""
+def _keyboard(buttons: list) -> dict:
+    """[(글자, data), …] = 한 줄, [[(글자, data)], …] = 여러 줄"""
+    rows = buttons if isinstance(buttons[0], list) else [buttons]
+    return {"inline_keyboard": [[{"text": t, "callback_data": d} for t, d in row] for row in rows]}
+
+
+async def send(text: str, buttons: list | None = None, silent: bool = False) -> int:
+    """내 대화방에 보내고 message_id 를 돌려준다. buttons = [(글자, callback_data)] 또는 줄마다 리스트, silent = 소리 없이"""
     p: dict = {"chat_id": config.TELEGRAM_CHAT_ID, "text": text, "disable_web_page_preview": True}
     if silent:
         p["disable_notification"] = True
     if buttons:
-        p["reply_markup"] = {"inline_keyboard": [[{"text": t, "callback_data": d} for t, d in buttons]]}
+        p["reply_markup"] = _keyboard(buttons)
     return (await call("sendMessage", **p))["message_id"]
 
 
@@ -72,22 +78,44 @@ async def notify(text: str) -> None:
         last_error = f"{now_text()} {e}"
 
 
-async def edit(message_id: int, text: str) -> None:
+async def edit(message_id: int, text: str, buttons: list | None = None) -> None:
+    p: dict = {"chat_id": config.TELEGRAM_CHAT_ID, "message_id": message_id, "text": text, "disable_web_page_preview": True}
+    if buttons:
+        p["reply_markup"] = _keyboard(buttons)
     try:
-        await call("editMessageText", chat_id=config.TELEGRAM_CHAT_ID, message_id=message_id, text=text, disable_web_page_preview=True)
+        await call("editMessageText", **p)
     except RuntimeError:
         pass
 
 
 async def handle_update(u: dict) -> None:
+    me = str(config.TELEGRAM_CHAT_ID)
+    m = u.get("message")
+    if m:
+        # 내 대화방에서 내가 보낸 글만 (다른 사람이 봇을 찾아 말을 걸어도 무시)
+        if str((m.get("chat") or {}).get("id")) == me and str((m.get("from") or {}).get("id")) == me and m.get("text"):
+            from . import guard
+
+            asyncio.create_task(guard.on_text(m["text"]))  # AI 답은 오래 걸려서 폴링을 막지 않게
+        return
     cq = u.get("callback_query")
     if not cq:
-        return  # 일반 메시지는 지금은 쓰지 않는다 (나중에 알림 명령)
-    me = str(config.TELEGRAM_CHAT_ID)
+        return
     msg = cq.get("message") or {}
     from_me = str((cq.get("from") or {}).get("id")) == me and str((msg.get("chat") or {}).get("id")) == me
     data = cq.get("data") or ""
     result = "처리할 수 없는 버튼입니다"
+    if from_me and data.startswith("g:"):
+        from . import guard
+
+        result = guard.on_button(data)
+        try:
+            await call("answerCallbackQuery", callback_query_id=cq.get("id"), text=result[:180])
+        except RuntimeError:
+            pass
+        if msg.get("message_id"):
+            await edit(msg["message_id"], f"{msg.get('text', '')}\n\n→ {result} ({now_text('%H:%M')})")
+        return
     if from_me and ":" in data and on_decision:
         act, rid = data.split(":", 1)
         if act in ("ok", "no"):
