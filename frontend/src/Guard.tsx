@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { post, put, usePoll, useServer } from './api';
+import Icon from './Icon';
 
 // 자산 지킴이 기준 (설정 화면). 텔레그램으로도 묻지만, 여기서 직접 정할 수도 있다 (AI·텔레그램 없이 되는 길).
 type Crit = { value: string; label: string; temp: boolean; title: string };
@@ -12,6 +14,28 @@ type View = {
   target: Record<string, number>;
   peak: { value: number; at: string };
 };
+
+/** 휴대폰 내 자산 맨 위: 지킴이 한 줄 요약. 누르면 설정의 기준 카드로 */
+export function GuardMini() {
+  const { live } = useServer();
+  const g = usePoll<View>(live ? '/api/guard' : null, 60_000, true);
+  const d = g.data;
+  if (!d) return null;
+  const temp = Object.values(d.criteria).filter((c) => c.temp).length;
+  const ok = d.risks.length === 0;
+  return (
+    <Link to="/settings#guard" className={`g-mini ${ok ? 'ok' : 'warn'}`}>
+      <span className="g-mini-ico" aria-hidden="true">
+        <Icon name="shield" size={20} />
+      </span>
+      <span className="g-mini-main">
+        <b>{ok ? '지킴이: 지금 걸리는 위험 없음' : `지킴이: 확인할 것 ${d.risks.length}개`}</b>
+        <span>{ok ? (temp ? `기준 ${temp}개 아직 안 정함` : '정한 기준으로 지키는 중') : d.risks[0]}</span>
+      </span>
+      <Icon name="chev" size={16} />
+    </Link>
+  );
+}
 
 export function GuardSettings() {
   const { live } = useServer();

@@ -50,7 +50,9 @@ export default function Chart({ candles, label }: { candles: Candle[]; label: st
     const x = (i: number) => i * step + step / 2;
     const line = (arr: (number | null)[]) => arr.reduce<string>((d, v, i) => (v === null ? d : d + (d ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)), '');
     const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => ({ y: t * PRICE_H, v: hi - t * (hi - lo) }));
-    const dateIdx = [0, 0.2, 0.4, 0.6, 0.8].map((t) => Math.floor(t * (vis.length - 1)));
+    // 날짜 글자가 겹치지 않게 폭 90px 에 하나 (휴대폰은 3개쯤)
+    const nd = Math.max(2, Math.min(5, Math.floor(W / 90)));
+    const dateIdx = Array.from({ length: nd }, (_, i) => Math.floor((i / nd) * (vis.length - 1)));
     return { step, bw, y, x, vmax, ticks, dateIdx, maLines: maVis.map(line), maVis };
   }, [W, vis, candles, start]);
 

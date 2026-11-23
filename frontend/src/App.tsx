@@ -9,7 +9,8 @@ import RulesPage from './RulesPage';
 import LogPage from './LogPage';
 import SettingsPage from './SettingsPage';
 import StockPage, { StockHome } from './StockPage';
-import { usePalette } from './hooks';
+import { useIsMobile, usePalette } from './hooks';
+import Icon from './Icon';
 
 const MENU: [string, string][] = [
   ['market', '시장'],
@@ -27,6 +28,7 @@ export default function App() {
   const mode = useMode();
   const [more, setMore] = useState(false);
   const loc = useLocation();
+  const mobile = useIsMobile();
   useEffect(() => setMore(false), [loc.pathname]);
   if (!checked) return null;
   // 서버가 있는데 로그인 안 했으면 로그인 화면만 (계좌 정보 보호)
@@ -35,9 +37,10 @@ export default function App() {
   return (
     <div className="app">
       <header className="top">
-        <Link to="/market" className="brand">
+        <Link to={mobile ? '/assets' : '/market'} className="brand">
           개미레인저
         </Link>
+        <span className="top-title">{MENU.find(([id]) => loc.pathname.startsWith(`/${id}`))?.[1] ?? ''}</span>
         <nav aria-label="주 메뉴" className="nav">
           {MENU.map(([id, label]) => (
             <NavLink key={id} to={`/${id}`}>
@@ -74,7 +77,7 @@ export default function App() {
       <PendingBanner />
       <main className="main">
         <Routes>
-          <Route path="/" element={<Navigate to="/market" replace />} />
+          <Route path="/" element={<Navigate to={mobile ? '/assets' : '/market'} replace />} />
           <Route path="/market" element={<MarketPage palette={palette} />} />
           <Route path="/assets" element={<AssetsPage palette={palette} />} />
           <Route path="/account" element={<Navigate to="/assets" replace />} />
@@ -91,12 +94,12 @@ export default function App() {
       <nav className="tabbar" aria-label="주 메뉴 (휴대폰)">
         {TABS.map(([id, label, icon]) => (
           <NavLink key={id} to={`/${id}`}>
-            <span aria-hidden="true">{icon}</span>
+            <Icon name={icon} />
             {label}
           </NavLink>
         ))}
         <button type="button" className={MORE.some(([id]) => loc.pathname.startsWith(`/${id}`)) ? 'active' : undefined} aria-expanded={more} onClick={() => setMore(!more)}>
-          <span aria-hidden="true">☰</span>
+          <Icon name="menu" />
           더보기
         </button>
       </nav>
@@ -128,10 +131,10 @@ export default function App() {
 }
 
 const TABS: [string, string, string][] = [
-  ['market', '시장', '▦'],
-  ['stock', '종목', '◔'],
-  ['assets', '내 자산', '◈'],
-  ['rules', '규칙', '⚑'],
+  ['assets', '내 자산', 'wallet'],
+  ['market', '시장', 'grid'],
+  ['stock', '종목', 'chart'],
+  ['rules', '규칙', 'flag'],
 ];
 const MORE: [string, string][] = [
   ['order', '주문'],

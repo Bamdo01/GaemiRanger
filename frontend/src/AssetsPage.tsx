@@ -3,7 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import AiReview from './AiReview';
 import { AlertsCard } from './Alerts';
 import Heatmap, { Legend, type Tile } from './Heatmap';
-import { useMarket } from './hooks';
+import { useIsMobile, useMarket } from './hooks';
+import { GuardMini } from './Guard';
+import Icon from './Icon';
 import { arrow, changeText, fmt, kstTime, signed, tone, type Palette } from './lib';
 import { put, refreshAll } from './api';
 import LedgerDrawer, { type Candidate, type Prefill } from './LedgerDrawer';
@@ -33,6 +35,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
   const acct = sp.get('acct') ?? 'all';
 
   const navigate = useNavigate();
+  const mobile = useIsMobile();
   const { status, stocks, indices, at, live } = useMarket();
   const port = usePortfolio(stocks, acct);
   const k = indices.find((i) => i.id === 'kospi');
@@ -77,6 +80,30 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
     else next.set('acct', v);
     setSp(next, { replace: true });
   };
+
+  if (mobile)
+    return (
+      <>
+        <LedgerDrawer open={drawer !== null} prefill={drawer} onClose={closeDrawer} candidates={candidates} />
+        <MobileAssets
+          port={port}
+          live={live}
+          acct={acct}
+          acctName={acctName}
+          setAcct={setAcct}
+          colorBy={colorBy}
+          setColorBy={(v) => setParam('show', v, SHOW)}
+          tiles={tiles}
+          palette={palette}
+          goStock={goStock}
+          onRecord={() => setDrawer({})}
+          addFor={live ? addFor : undefined}
+          kospiPct={kospiPct}
+          stamp={status.open ? `${kstTime(at)} 기준` : status.label}
+          flash={flash}
+        />
+      </>
+    );
 
   return (
     <div className="assets">
@@ -187,6 +214,212 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
     </div>
   );
 }
+
+/* ---------- 휴대폰 (2026-11-24 사용자: 토스처럼 보기 쉽게) ---------- */
+const AVATAR: Record<string, string> = { kr: '#2c4a8f', us: '#53408a', coin: '#8a5420', gold: '#8a6d12', etc: '#3a4766' };
+const ETF_PREFIX = /^(KODEX|TIGER|ACE|SOL|RISE|KBSTAR|HANARO|PLUS|KOSEF|ARIRANG)\s*/;
+const bare = (x: string) => x.replace(/^[▲▼] /, '');
+
+function MobileAssets(p: {
+  port: Portfolio;
+  live: boolean;
+  acct: string;
+  acctName: string;
+  setAcct: (v: string) => void;
+  colorBy: string;
+  setColorBy: (v: string) => void;
+  tiles: Tile[];
+  palette: Palette;
+  goStock: (c: string) => void;
+  onRecord: () => void;
+  addFor?: (r: Row) => void;
+  kospiPct: number;
+  stamp: string;
+  flash: Record<string, 'up' | 'dn'>;
+}) {
+  const { port, live } = p;
+  const [view, setView] = useState<'list' | 'map'>('list');
+  const [open, setOpen] = useState('');
+  const has = port.rows.length > 0;
+  const rows = [...port.rows].sort((a, b) => b.amt - a.amt);
+  const profit = p.colorBy === 'profit';
+  const pctOf = (a: number) => (port.total ? (a / port.total) * 100 : 0);
+  return (
+    <div className="assets m-assets">
+      {live && (
+        <div className="m-acct" role="group" aria-label="계좌 고르기">
+          {[{ id: 'all', name: '전체' }, ...port.accounts].map((a) => (
+            <button key={a.id} type="button" className="m-pill" aria-pressed={p.acct === a.id} onClick={() => p.setAcct(a.id)}>
+              {a.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <section className="m-hero" aria-label="내 자산 요약">
+        <p className="m-hero-k">
+          {live ? p.acctName : '예시 데이터'} 총자산 <LiveBadge />
+        </p>
+        <p className="m-hero-v">{fmt(port.total)}원</p>
+        <p className={`m-hero-d ${tone(port.todayPnl)}`}>
+          오늘 {arrow(port.todayPnl)} {signed(port.todayPnl)}원 ({bare(changeText(port.todayPct))})
+        </p>
+        <p className="m-hero-s">
+          투자 수익{' '}
+          <span className={tone(port.pnl)}>
+            {signed(port.pnl)}원 ({bare(changeText(port.pnlPct))})
+          </span>
+          {(port.realized !== 0 || port.dividends !== 0) && <> · 실현 {signed(port.realized)}원</>}
+        </p>
+        <div className="m-hero-split">
+          <span>
+            투자 <b>{fmt(port.stockValue)}원</b>
+          </span>
+          <span>
+            현금 <b>{fmt(port.cash)}원</b> {pctOf(port.cash).toFixed(0)}%
+          </span>
+        </div>
+        <div className="m-hero-foot">
+          <span className="m-hero-stamp">{p.stamp}</span>
+          {port.usesUsd && <FxChip fx={port.fx} source={port.fxSource} />}
+          <span className="grow" />
+          {live && (
+            <button type="button" className="m-record" onClick={p.onRecord} aria-haspopup="dialog">
+              <Icon name="plus" size={16} /> 기록
+            </button>
+          )}
+        </div>
+      </section>
+
+      {live && <GuardMini />}
+      {live && <AlertsCard />}
+
+      <section className="card m-hold" aria-labelledby="h-mhold">
+        <div className="m-hold-head">
+          <h2 id="h-mhold">보유 {rows.length}</h2>
+          <div className="m-seg" role="group" aria-label="보는 방식">
+            <button type="button" aria-pressed={view === 'list'} onClick={() => setView('list')} aria-label="목록으로 보기">
+              <Icon name="list" size={18} />
+            </button>
+            <button type="button" aria-pressed={view === 'map'} onClick={() => setView('map')} aria-label="히트맵으로 보기">
+              <Icon name="map" size={18} />
+            </button>
+          </div>
+        </div>
+        <div className="m-seg m-seg-wide" role="group" aria-label="보여 줄 값">
+          {SHOW.map(([v, l]) => (
+            <button key={v} type="button" aria-pressed={p.colorBy === v} onClick={() => p.setColorBy(v)}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {!has && <p className="sub">보유 종목이 없습니다. 위의 [기록]으로 다른 증권사·코인·예금도 넣을 수 있습니다.</p>}
+        {view === 'map' ? (
+          <>
+            <div className="m-map">
+              <Heatmap tiles={p.tiles} palette={p.palette} label={`보유 종목 히트맵, ${profit ? '내 수익률' : '오늘 등락률'}`} onPick={p.goStock} scale={profit ? 30 : 3} />
+            </div>
+            {profit ? <Legend palette={p.palette} scale={30} low="▼ 손실" high="이익 ▲" /> : <Legend palette={p.palette} />}
+          </>
+        ) : (
+          <ul className="m-rows">
+            {rows.map((r) => {
+              const v = profit ? r.profit : r.today;
+              const won = profit ? r.pnl : r.todayPnl;
+              const isOpen = open === r.code;
+              return (
+                <li key={r.code} className={p.flash[r.code] ? `flash-${p.flash[r.code]}` : undefined}>
+                  <button type="button" className="m-row" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? '' : r.code)}>
+                    <span className="m-ava" style={{ background: AVATAR[r.asset] ?? AVATAR.etc }} aria-hidden="true">
+                      {r.s.name.replace(ETF_PREFIX, '').slice(0, r.asset === 'us' ? 1 : 2)}
+                    </span>
+                    <span className="m-row-main">
+                      <span className="m-row-name">{r.s.name}</span>
+                      <span className="m-row-sub">
+                        {qtyText(r)} · {pctOf(r.amt).toFixed(1)}%
+                      </span>
+                    </span>
+                    <span className="m-row-right">
+                      <span className="m-row-amt">{fmt(r.amt)}원</span>
+                      <span className={`m-row-pct ${tone(v)}`}>
+                        {signed(won)}원 ({bare(changeText(v))})
+                      </span>
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="m-row-more">
+                      <dl>
+                        <div>
+                          <dt>평균단가</dt>
+                          <dd>{fmt(r.avg)}원</dd>
+                        </div>
+                        <div>
+                          <dt>현재가</dt>
+                          <dd>{fmt(r.s.price)}원</dd>
+                        </div>
+                        <div>
+                          <dt>평가손익</dt>
+                          <dd className={tone(r.pnl)}>
+                            {signed(r.pnl)}원 ({bare(changeText(r.profit))})
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>오늘</dt>
+                          <dd className={tone(r.todayPnl)}>
+                            {signed(r.todayPnl)}원 ({bare(changeText(r.today))})
+                          </dd>
+                        </div>
+                        {r.accounts.map((a) => (
+                          <div key={a.id}>
+                            <dt>{a.name}</dt>
+                            <dd>{qtyText({ qty: a.qty, asset: r.asset })}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                      <div className="m-row-btns">
+                        {r.asset === 'kr' && (
+                          <button type="button" className="m-btn" onClick={() => p.goStock(r.code)}>
+                            종목 화면
+                          </button>
+                        )}
+                        {p.addFor && (
+                          <button type="button" className="m-btn" onClick={() => p.addFor!(r)}>
+                            기록 추가
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+            {port.cash > 0 && (
+              <li>
+                <div className="m-row">
+                  <span className="m-ava" style={{ background: 'var(--cash)' }} aria-hidden="true">
+                    ₩
+                  </span>
+                  <span className="m-row-main">
+                    <span className="m-row-name">현금</span>
+                    <span className="m-row-sub">{pctOf(port.cash).toFixed(1)}%</span>
+                  </span>
+                  <span className="m-row-right">
+                    <span className="m-row-amt">{fmt(port.cash)}원</span>
+                  </span>
+                </div>
+              </li>
+            )}
+          </ul>
+        )}
+      </section>
+
+      {live && has && <MovesCard port={port} />}
+      {has && <Checks port={port} kospiPct={p.kospiPct} />}
+      <Weights port={port} />
+      {has && <AiReview port={port} kospiPct={p.kospiPct} />}
+    </div>
+  );
+}
+
 
 function Sum({ k, v, s, t }: { k: string; v: string; s: string; t: number }) {
   return (

@@ -76,3 +76,16 @@ export function usePalette(): Palette {
   return 'night';
 }
 
+
+/** 휴대폰 화면인지 (폭 760px 이하). 휴대폰은 일부 화면을 아예 다른 모양으로 그린다 (2026-11-24) */
+export const MOBILE_QUERY = '(max-width: 760px)';
+export function useIsMobile(): boolean {
+  const [m, setM] = useState(() => typeof window !== 'undefined' && window.matchMedia(MOBILE_QUERY).matches);
+  useEffect(() => {
+    const q = window.matchMedia(MOBILE_QUERY);
+    const on = () => setM(q.matches);
+    q.addEventListener('change', on);
+    return () => q.removeEventListener('change', on);
+  }, []);
+  return m;
+}

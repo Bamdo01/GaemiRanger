@@ -34,6 +34,8 @@ export function StockHome() {
   return <Navigate to={`/stock/${STOCKS.some((s) => s.code === code) ? code : '005930'}`} replace />;
 }
 
+const SIDE_EVENT = 'gr-order-side';
+
 export default function StockPage() {
   const { code = '' } = useParams();
   const navigate = useNavigate();
@@ -49,6 +51,16 @@ export default function StockPage() {
   useEffect(() => {
     if (s) save(LAST_KEY, s.code);
   }, [s]);
+  const [orderSeen, setOrderSeen] = useState(false);
+  const loaded = !!s;
+  useEffect(() => {
+    // 주문 칸이 화면에 보이면 아래 고정 버튼을 숨긴다 (같은 버튼이 두 번 보이지 않게)
+    const el = document.getElementById('st-order');
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([e]) => setOrderSeen(e.isIntersecting), { threshold: 0.15 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [code, loaded]);
 
   if (!s)
     return (
@@ -59,6 +71,10 @@ export default function StockPage() {
     );
 
   const watched = watch.includes(s.code);
+  const goOrder = (side: 'buy' | 'sell') => {
+    window.dispatchEvent(new CustomEvent(SIDE_EVENT, { detail: side }));
+    document.getElementById('st-order')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const go = (c: string) => navigate(`/stock/${c}`);
 
   return (
@@ -72,6 +88,14 @@ export default function StockPage() {
       <div className="st-bottom">
         <Info s={s} live={live} />
         <MyHolding s={s} port={port} />
+      </div>
+      <div className={`st-cta${orderSeen ? ' hide' : ''}`}>
+        <button type="button" className="st-cta-sell" onClick={() => goOrder('sell')}>
+          팔기
+        </button>
+        <button type="button" className="st-cta-buy" onClick={() => goOrder('buy')}>
+          사기
+        </button>
       </div>
       <p className="st-foot">
         {status.open ? `${kstTime(at)} 기준` : status.label} · {live ? (mode.real ? '한투 실전 계좌 · 주문은 실제 돈으로 나갑니다' : '한투 모의투자 계좌 · 주문은 모의로 실제 접수됩니다') : '예시 데이터 (차트·호가·주문 모두 예시)'}
@@ -335,9 +359,14 @@ function OrderForm({ s, live, cash, price, setPrice, heldQty }: { s: Stock; live
                 : '';
   const stepPrice = (dir: 1 | -1) => setPrice(Math.max(lim.lower, Math.min(lim.upper, dir > 0 ? p + tickOf(p) : p - tickOf(p - 1))));
   const sideName = side === 'buy' ? '매수' : '매도';
+  useEffect(() => {
+    const on = (e: Event) => setSide((e as CustomEvent<'buy' | 'sell'>).detail);
+    window.addEventListener(SIDE_EVENT, on);
+    return () => window.removeEventListener(SIDE_EVENT, on);
+  }, []);
 
   return (
-    <section className="panel-t st-order" aria-label="주문">
+    <section className="panel-t st-order" id="st-order" aria-label="주문">
       <div className={`seg sm order-side ${side}`} role="group" aria-label="매수 매도">
         <button type="button" aria-pressed={side === 'buy'} onClick={() => setSide('buy')}>
           매수
