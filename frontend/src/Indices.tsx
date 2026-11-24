@@ -1,22 +1,35 @@
 import type { Index } from './data';
 import { fmt2, signPct, tone, type MarketStatus } from './lib';
 
-// 토스처럼 맨 위 한 줄: 국내·미국 장 상태와 주요 지수. 휴대폰에서는 옆으로 밀어 본다 (2026-11-24)
+// 토스처럼 맨 위 한 줄: 국내·미국 장 상태(고정)와 주요 지수(왼쪽으로 흘러가는 띠) (2026-11-24)
+// 띠는 같은 목록을 두 번 이어 붙여 끊김 없이 돈다. 누르고 있거나 마우스를 올리면 멈춘다
 export default function MarketBar({ status, indices }: { status: MarketStatus; indices: Index[] }) {
+  const items = indices.map((i) => {
+    const p = i.prev ? ((i.value - i.prev) / i.prev) * 100 : 0;
+    return (
+      <div key={i.id} className="mbar-i">
+        <span className="mbar-k">{i.name}</span>
+        <b className="num">{fmt2(i.value)}</b>
+        <span className={`num ${tone(p)}`}>{signPct(p)}</span>
+      </div>
+    );
+  });
   return (
     <div className="mbar" role="group" aria-label="장 상태와 지수">
-      <Sess k="국내" s={status.kr} />
-      <Sess k="미국" s={status.us} />
-      {indices.map((i) => {
-        const p = i.prev ? ((i.value - i.prev) / i.prev) * 100 : 0;
-        return (
-          <div key={i.id} className="mbar-i">
-            <span className="mbar-k">{i.name}</span>
-            <b className="num">{fmt2(i.value)}</b>
-            <span className={`num ${tone(p)}`}>{signPct(p)}</span>
+      <div className="mbar-ss">
+        <Sess k="국내" s={status.kr} />
+        <Sess k="미국" s={status.us} />
+      </div>
+      {items.length > 0 && (
+        <div className="mbar-run" tabIndex={0} aria-label="주요 지수 (마우스를 올리거나 누르면 멈춤)">
+          <div className="mbar-track" style={{ animationDuration: `${Math.max(20, items.length * 5)}s` }}>
+            <div className="mbar-set">{items}</div>
+            <div className="mbar-set" aria-hidden="true">
+              {items}
+            </div>
           </div>
-        );
-      })}
+        </div>
+      )}
     </div>
   );
 }

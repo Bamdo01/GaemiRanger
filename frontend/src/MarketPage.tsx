@@ -12,12 +12,17 @@ import { Seg, type Opt } from './Pickers';
 
 // 보기는 앞으로 늘어날 수 있어서 (코스닥, 관심종목 등) 드롭다운으로 고른다.
 // 내 포트폴리오는 2026-11-17 부터 [내 자산] 메뉴에서 본다.
+// 트레이딩뷰 목록을 참고 (2026-11-24): 지수 구성종목 그대로. 거래대금 30 은 오늘 돈이 몰린 종목을 보려고 남긴다
 const VIEWS: Opt = [
   ['kospi50', '코스피 상위 50'],
-  ['kosdaq30', '코스닥 상위 30'],
+  ['kospi200', '코스피 200'],
+  ['kosdaq150', '코스닥 150'],
   ['value30', '거래대금 상위 30'],
-  ['us50', '미국 상위 50'],
+  ['sp500', 'S&P 500'],
+  ['ndx', '나스닥 100'],
+  ['dji', '다우존스 30'],
 ];
+const US_VIEWS = ['sp500', 'ndx', 'dji'];
 // TradingView 처럼 위쪽에서 고른다. 첫 값이 기본값이고, 기본값은 주소에 남기지 않는다.
 // 크기는 TradingView 를 참고해 드롭다운 (2026-11-18). 거래량·거래대금은 지금 예시 값.
 const SIZE: Opt = [
@@ -55,11 +60,11 @@ export default function MarketPage({ palette }: Props) {
   const mk = useMarket();
   const { status, indices, live } = mk;
   // 코스피 50 말고 다른 보기는 서버가 한투 순위로 만든다 (2026-11-24)
-  const other = usePoll<{ stocks: (Stock & { cur?: string })[]; at: number | null }>(live && view !== 'kospi50' ? `/api/market/view?v=${view}` : null, 10_000, true);
+  const other = usePoll<{ stocks: (Stock & { cur?: string })[]; total?: number; at: number | null }>(live && view !== 'kospi50' ? `/api/market/view?v=${view}` : null, 10_000, true);
   const stocks: (Stock & { cur?: string })[] = view === 'kospi50' ? mk.stocks : other.data?.stocks ?? [];
   const at = view === 'kospi50' ? mk.at : other.data?.at ? new Date(other.data.at * 1000) : mk.at;
   const error = view === 'kospi50' ? mk.error : other.error;
-  const isUs = view === 'us50';
+  const isUs = US_VIEWS.includes(view);
   // 서버(한투) 값일 때 1주·1달 거래량은 아직 없다 → 1일로
   const size = live && /1[wm]$/.test(picked) ? picked.replace(/1[wm]$/, '1d') : picked;
   const port = usePortfolio(mk.stocks);
@@ -116,7 +121,7 @@ export default function MarketPage({ palette }: Props) {
         <span className="grow" />
         <span className="stamp">
           {status.moving ? `${stampOf(status, at)} · 10초마다 갱신` : status.label}
-          <em>{live ? `한투 · ${VIEWS.find(([v]) => v === view)![1]} ${stocks.length}종목${isUs ? ' · 달러' : ''}${error ? ` · 갱신 실패: ${error}` : ''}` : '예시 데이터'}</em>
+          <em>{live ? `한투 · ${VIEWS.find(([v]) => v === view)![1]} ${stocks.length}${other.data?.total && view !== 'kospi50' && other.data.total > stocks.length ? `/${other.data.total}` : ''}종목${isUs ? ' · 달러' : ''}${error ? ` · 갱신 실패: ${error}` : ''}` : '예시 데이터'}</em>
         </span>
       </section>
 
@@ -146,7 +151,7 @@ export default function MarketPage({ palette }: Props) {
 
       <div className="stage">
         {live && stocks.length === 0 ? (
-          <div className="empty">{view === 'kospi50' ? '한투에서 시세를 받는 중입니다. 서버를 켠 직후에는 50종목이 다 채워지는 데 1분쯤 걸립니다.' : error ? `불러오지 못했습니다: ${error} (10초 뒤 다시)` : '한투에서 순위를 받는 중입니다…'}</div>
+          <div className="empty">{view === 'kospi50' ? '한투에서 시세를 받는 중입니다. 서버를 켠 직후에는 50종목이 다 채워지는 데 1분쯤 걸립니다.' : error ? `불러오지 못했습니다: ${error} (10초 뒤 다시)` : '구성종목과 시세를 받는 중입니다… (처음에는 10~20초쯤 걸립니다)'}</div>
         ) : (
           <Heatmap tiles={tiles} palette={palette} label="시장 히트맵" onPick={(code) => navigate(`/stock/${code}`)} />
         )}

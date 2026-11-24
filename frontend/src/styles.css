@@ -584,10 +584,20 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 /* 자산 지킴이 */
 .guard-risks { margin: 0 0 10px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; line-height: 1.45; }
 
-/* 장 상태와 지수 한 줄 (토스처럼, 2026-11-24) */
-.mbar { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; flex-shrink: 0; }
-.mbar::-webkit-scrollbar { display: none; }
-.mbar > * { flex: 0 0 auto; display: flex; align-items: baseline; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; white-space: nowrap; }
+/* 장 상태와 지수 한 줄 (토스처럼, 2026-11-24). 장 상태는 고정, 지수는 왼쪽으로 흐르는 띠 */
+.mbar { display: flex; align-items: center; gap: 6px; flex-shrink: 0; min-width: 0; }
+.mbar-ss { display: flex; gap: 6px; flex-shrink: 0; }
+.mbar-s, .mbar-i { flex: 0 0 auto; display: flex; align-items: baseline; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; white-space: nowrap; }
+.mbar-run { flex: 1 1 auto; min-width: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
+.mbar-track { display: flex; width: max-content; animation: mbar-slide 40s linear infinite; }
+.mbar-set { display: flex; gap: 6px; padding-right: 6px; }
+.mbar-run:hover .mbar-track, .mbar-run:active .mbar-track, .mbar-run:focus-visible .mbar-track { animation-play-state: paused; }
+@keyframes mbar-slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .mbar-run { overflow-x: auto; scrollbar-width: none; -webkit-mask-image: none; mask-image: none; }
+  .mbar-track { animation: none; }
+  .mbar-set[aria-hidden] { display: none; }
+}
 .mbar-k { color: var(--sec); font-size: 12.5px; }
 .mbar-i b { font-weight: 600; }
 .mbar-i .up, .mbar-i .dn, .mbar-i .flat { font-size: 12.5px; font-weight: 600; }
