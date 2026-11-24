@@ -174,6 +174,8 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
       </section>
 
       <div className="as-main">
+        {/* 왼쪽: 히트맵 바로 아래 보유 종목 표 (오른쪽 카드가 길어도 내 종목이 밀리지 않게, 2026-11-24) */}
+        <div className="as-left">
         <section className="card as-heat" aria-labelledby="h-heat">
           <div className="card-head">
             <h2 id="h-heat">
@@ -197,6 +199,8 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
           </div>
           {colorBy === 'profit' ? <Legend palette={palette} scale={30} low="▼ 손실" high="이익 ▲" /> : <Legend palette={palette} />}
         </section>
+        {has && <HoldTable port={port} onPick={goStock} onAdd={live ? addFor : undefined} flash={flash} />}
+        </div>
 
         <div className="as-side">
           {live && manualAccounts.length === 0 && (
@@ -215,8 +219,6 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
           {has && <AiReview port={port} kospiPct={kospiPct} />}
         </div>
       </div>
-
-      {has && <HoldTable port={port} onPick={goStock} onAdd={live ? addFor : undefined} flash={flash} />}
     </div>
   );
 }
@@ -297,7 +299,6 @@ function MobileAssets(p: {
       </section>
 
       {live && <GuardMini />}
-      {live && <AlertsCard />}
 
       <section className="card m-hold" aria-labelledby="h-mhold">
         <div className="m-hold-head">
@@ -418,6 +419,7 @@ function MobileAssets(p: {
         )}
       </section>
 
+      {live && <AlertsCard max={3} />}
       {live && has && <MovesCard port={port} />}
       {has && <Checks port={port} kospiPct={p.kospiPct} />}
       <Weights port={port} />

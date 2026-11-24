@@ -24,11 +24,13 @@ function when(at: string): string {
   return d === today ? at.slice(11, 16) : `${at.slice(5, 7)}/${at.slice(8, 10)} ${at.slice(11, 16)}`;
 }
 
-/** 내 자산 화면의 알림함 */
-export function AlertsCard() {
+/** 내 자산 화면의 알림함. 내 종목이 밀리지 않게 처음에는 최근 몇 개만 한 줄씩 (2026-11-24) */
+export function AlertsCard({ max = 4 }: { max?: number }) {
   const v = useAlerts(15);
   const [open, setOpen] = useState<string>('');
-  const items = v.data?.items ?? [];
+  const [all, setAll] = useState(false);
+  const every = v.data?.items ?? [];
+  const items = all ? every : every.slice(0, max);
   const st = v.data?.status;
   return (
     <section className="card alerts" aria-labelledby="h-alerts">
@@ -84,6 +86,11 @@ export function AlertsCard() {
             </li>
           ))}
         </ul>
+      )}
+      {every.length > max && (
+        <button type="button" className="al-toggle" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? '접기' : `알림 ${every.length - max}개 더 보기`}
+        </button>
       )}
     </section>
   );
