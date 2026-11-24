@@ -643,3 +643,20 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 .hn-orders li + li { margin-top: 4px; }
 .hn-why { max-width: 360px; white-space: normal; color: var(--sec); font-size: 12.5px; }
 .hn-rules { margin: 0; padding-left: 18px; line-height: 1.7; font-size: 13px; color: var(--sec); }
+.hn-acct button span { margin-left: 4px; font-size: 12px; }
+.hn-team { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.hn-team > li { display: grid; grid-template-columns: 34px 1fr auto; gap: 4px 10px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.hn-team-sel { display: flex; flex-wrap: wrap; gap: 6px; }
+.hn-team-sel .dd { min-width: 0; }
+.hn-team-desc { grid-column: 2 / -1; margin: 0; font-size: 12.5px; line-height: 1.5; }
+.hn-ava { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--seg-on); color: var(--ink); font-weight: 700; font-size: 14px; flex: 0 0 auto; }
+.hn-talk { list-style: none; margin: 8px 0 4px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.hn-say { display: flex; gap: 10px; align-items: flex-start; }
+.hn-say > div { background: rgba(255, 255, 255, 0.04); border-radius: 4px 14px 14px 14px; padding: 8px 12px; min-width: 0; flex: 1 1 auto; }
+.hn-say p { margin: 4px 0 0; line-height: 1.55; font-size: 13.5px; }
+.hn-risk > div { background: color-mix(in srgb, var(--dn) 10%, transparent); }
+.hn-strategist .hn-ava { background: #3b4f86; }
+.hn-analyst .hn-ava { background: #2f6b55; }
+.hn-risk .hn-ava { background: #8a3a44; }
+.hn-stance { margin-left: 6px; padding: 1px 6px; border-radius: 99px; background: var(--seg); color: var(--sec); }
+.hn-picks { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }

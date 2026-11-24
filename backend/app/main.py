@@ -500,6 +500,39 @@ class HarnessRun(BaseModel):
     market: str
 
 
+class HarnessNew(BaseModel):
+    name: str = ""
+    strategy: str = "team"
+    preset: str = "balanced"
+
+
+class HarnessTeam(BaseModel):
+    team: list[dict]
+
+
+@app.post("/api/harness", dependencies=api)
+def new_harness(b: HarnessNew):
+    try:
+        a = harness.create(b.name, b.strategy, b.preset)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    activity.log("harness", f"가상 계좌 만듦: {a['name']}")
+    return {"id": a["id"]}
+
+
+@app.put("/api/harness/{aid}/team", dependencies=api)
+def put_harness_team(aid: str, b: HarnessTeam):
+    a = harness.account(aid)
+    if not a:
+        raise HTTPException(404, "없는 하네스 계좌입니다")
+    try:
+        harness.set_team(a, b.team)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    activity.log("harness", f"{a['name']} 팀 바꿈: " + ", ".join(harness.agent_name(m) for m in a["team"]))
+    return {"ok": True}
+
+
 @app.get("/api/harness", dependencies=api)
 async def get_harness():
     return await harness.view()

@@ -70,11 +70,71 @@ def load() -> dict:
         if not data.get("accounts"):
             data["accounts"] = [_new_account("paper1", "가상 하네스 (AI)")]
             _save()
+        # 2026-11-25 사용자: 단독 AI 계좌는 비교 기준으로 두고, 팀 계좌를 하나 더 (균형 5인)
+        if not data.get("teamSeeded"):
+            if not any(a.get("strategy") == "team" for a in data["accounts"]):
+                data["accounts"].append(_new_account(_next_id(), "가상 팀 (균형 5인)", "team", preset("balanced")))
+            data["teamSeeded"] = True
+            _save()
     return data
 
 
-def _new_account(aid: str, name: str) -> dict:
-    return {"id": aid, "name": name, "kind": "paper", "strategy": "ai", "start": START, "cash": START, "createdAt": _iso(), "enabled": True, "positions": {}, "trades": [], "decisions": [], "equity": [], "lastDecide": {}, "today": {"day": "", "n": 0}, "reported": {}}
+def _new_account(aid: str, name: str, strategy: str = "ai", team: list | None = None) -> dict:
+    return {"id": aid, "name": name, "kind": "paper", "strategy": strategy, "team": team or [], "start": START, "cash": START, "createdAt": _iso(), "enabled": True, "positions": {}, "trades": [], "decisions": [], "equity": [], "lastDecide": {}, "today": {"day": "", "n": 0}, "reported": {}, "debate": {}}
+
+
+def _next_id() -> str:
+    n = 1
+    while any(a["id"] == f"paper{n}" for a in data.get("accounts", [])):
+        n += 1
+    return f"paper{n}"
+
+
+# ---------- 팀: 역할 · 투자관 · 성향 (2026-11-25) ----------
+ROLES = {
+    "strategist": ("시장 전략가", "지금 시장 분위기를 읽고, 이 시장에 돈을 얼마나 둘지(현금 비중 포함) 의견을 낸다."),
+    "analyst": ("종목 분석가", "사거나 팔 종목 후보를 최대 3개, 데이터에 있는 근거와 함께 낸다."),
+    "risk": ("리스크 관리자", "다른 팀원 의견의 위험을 짚는다. 위험이 크면 그 종목 매수를 반대한다 (반대한 종목은 다음 토론까지 매수가 막힌다)."),
+    "manager": ("최종 결정자", "팀 의견을 모아 최종 주문안을 낸다. 반대된 종목은 사지 않는다."),
+}
+PERSONAS = {
+    "buffett": ("워런 버핏", "좋은 회사(꾸준한 이익, 강한 경쟁력)를 적당한 값에 사서 오래 갖고 간다. 유행과 단기 등락에 휘둘리지 않는다."),
+    "graham": ("벤저민 그레이엄", "안전마진을 최우선으로 한다. 싸지 않으면 사지 않고, 손실을 피하는 것을 수익보다 먼저 본다."),
+    "lynch": ("피터 린치", "이해하기 쉬운 성장 회사를 찾는다. 이익이 빠르게 느는 회사를 성장에 비해 비싸지 않을 때 산다."),
+    "bogle": ("존 보글", "개별 종목보다 지수에 넓게 분산하고 비용을 낮춘다. 자주 사고팔지 않는다."),
+    "dalio": ("레이 달리오", "자산과 지역을 나눠 어떤 국면에서도 크게 잃지 않게 한다. 주식·채권·금의 균형을 본다."),
+    "momentum": ("모멘텀 트레이더", "오르는 것은 더 오르고 내리는 것은 더 내린다고 본다. 추세가 꺾이면 빨리 판다."),
+    "neutral": ("중립", "특정 투자관 없이 데이터와 팀 의견을 공정하게 저울질한다."),
+}
+TEMPERS = {"cons": ("보수", "손실을 피하는 쪽으로 판단한다."), "mid": ("중립", "위험과 수익을 같은 무게로 본다."), "aggr": ("공격", "기회가 보이면 비중을 크게 싣는다 (코드 한도 안에서).")}
+PRESETS = {
+    "balanced": [("strategist", "dalio", "mid"), ("analyst", "buffett", "cons"), ("analyst", "lynch", "aggr"), ("risk", "graham", "cons"), ("manager", "neutral", "mid")],
+    "conservative": [("strategist", "bogle", "cons"), ("risk", "graham", "cons"), ("manager", "neutral", "cons")],
+    "aggressive": [("strategist", "momentum", "aggr"), ("analyst", "lynch", "aggr"), ("analyst", "momentum", "aggr"), ("manager", "neutral", "aggr")],
+}
+PRESET_NAMES = {"balanced": "균형 5인", "conservative": "보수 3인", "aggressive": "공격 4인"}
+
+
+def agent_name(m: dict) -> str:
+    return f"{PERSONAS[m['persona']][0]}형 {ROLES[m['role']][0]}" if m["persona"] != "neutral" else ROLES[m["role"]][0]
+
+
+def preset(key: str) -> list[dict]:
+    return [{"id": f"m{i + 1}", "role": r, "persona": p, "temper": tp} for i, (r, p, tp) in enumerate(PRESETS[key])]
+
+
+def check_team(team: list[dict]) -> list[dict]:
+    """팀 검사: 역할·투자관·성향이 목록에 있고, 매니저는 꼭 한 명, 전체 2~6명"""
+    out = []
+    for i, m in enumerate(team[:6]):
+        if m.get("role") not in ROLES or m.get("persona") not in PERSONAS or m.get("temper") not in TEMPERS:
+            raise ValueError(f"{i + 1}번째 팀원의 역할·투자관·성향이 잘못됨")
+        out.append({"id": f"m{i + 1}", "role": m["role"], "persona": m["persona"], "temper": m["temper"]})
+    if sum(1 for m in out if m["role"] == "manager") != 1:
+        raise ValueError("최종 결정자(매니저)는 꼭 한 명이어야 합니다")
+    if len(out) < 2:
+        raise ValueError("팀은 두 명 이상이어야 합니다 (매니저 + 한 명)")
+    return out
 
 
 def _save() -> None:
@@ -174,6 +234,8 @@ async def execute(a: dict, o: dict, by: str) -> str:
     pos = a["positions"].get(key)
     if side == "buy" and not in_universe(asset, code):
         return "거절: 투자 범위 밖 (코스피200·S&P500·나스닥100·다우30·지정 ETF만)"
+    if side == "buy" and code in ((a.get("debate") or {}).get(asset) or {}).get("block", []):
+        return "거절: 리스크 관리자가 반대한 종목 (다음 토론까지)"
     try:
         price, name = await price_of(asset, code)
     except KISError as e:
@@ -331,12 +393,12 @@ async def _context(a: dict, mkt: str) -> str:
     return "\n".join(lines)
 
 
-def _parse(text: str) -> dict:
+def _parse(text: str, need_orders: bool = True) -> dict:
     m = re.search(r"\{.*\}", text, re.S)
     if not m:
         raise ValueError("JSON 없음")
     d = json.loads(m.group(0))
-    if not isinstance(d.get("orders"), list):
+    if need_orders and not isinstance(d.get("orders"), list):
         d["orders"] = []
     return d
 
@@ -348,8 +410,11 @@ async def decide(a: dict, mkt: str, why: str = "정기") -> dict:
         rec = {"at": _iso(), "market": mkt, "why": why, "view": "", "orders": [], "results": [], "error": ""}
         try:
             ctx = await _context(a, mkt)
-            text = await ai.ask_system(SYSTEM, ctx + "\n\n위 데이터로 이번 시장의 판단과 주문안을 JSON 으로.")
-            d = _parse(text)
+            if a.get("strategy") == "team":
+                d = await _team(a, mkt, ctx, rec)
+            else:
+                text = await ai.ask_system(SYSTEM, ctx + "\n\n위 데이터로 이번 시장의 판단과 주문안을 JSON 으로.")
+                d = _parse(text)
             rec["view"] = str(d.get("view") or "")[:400]
             for o in d["orders"][: LIMITS["maxOrdersPerDecision"]]:
                 if not isinstance(o, dict):
@@ -370,6 +435,65 @@ async def decide(a: dict, mkt: str, why: str = "정기") -> dict:
         a["decisions"] = a["decisions"][-300:]
         _save()
         return rec
+
+
+# ---------- 팀 토론 ----------
+ASK = {
+    "strategist": '이번 시장에 대한 의견을 JSON 하나로만: {"opinion": "시장 분위기와 이 시장에 둘 비중(현금 포함) 의견 2~4문장", "stance": "늘림 또는 유지 또는 줄임"}',
+    "analyst": '사거나 팔 후보를 최대 3개. JSON 하나로만: {"opinion": "판단 2~4문장", "picks": [{"side": "buy 또는 sell", "code": "종목코드 또는 티커", "reason": "근거 한 문장"}]}',
+    "risk": '위 팀원 의견들의 위험을 짚어라. 매수하면 위험이 큰 종목이 있으면 block 에 넣어라 (다음 토론까지 매수가 막힌다). JSON 하나로만: {"opinion": "위험 평가 2~4문장", "block": ["코드", ...]}',
+}
+
+
+def _agent_system(a: dict, m: dict, mkt: str) -> str:
+    role, rdesc = ROLES[m["role"]]
+    pname, pdesc = PERSONAS[m["persona"]]
+    tname, tdesc = TEMPERS[m["temper"]]
+    head = (
+        f"너는 '{a['name']}' 가상 투자 계좌(진짜 돈이 아님, 시작 1천만 원)를 굴리는 팀의 {role}다. {rdesc}\n"
+        f"투자관: {pname} — {pdesc}\n성향: {tname} — {tdesc}\n"
+        "근거는 주어진 데이터(가격, 오늘 등락률, 알림·뉴스 제목, 보유 현황, 팀원 의견)만 쓴다. 데이터에 없는 뉴스·실적은 지어내지 않는다. 한국어로 짧게.\n"
+        f"이번에 다루는 시장은 {'국내' if mkt == 'kr' else '미국'} 하나뿐이다. 코드가 강제하는 한도: 한 종목 15%, 한 번 매수 10%, 현금 5% 이상, 하루 매매 10번, -10% 자동 손절."
+    )
+    if m["role"] == "manager":
+        # 매니저는 단독 AI 와 같은 답 형식 (주문안 JSON)
+        return head + "\n\n" + SYSTEM[SYSTEM.index("답은 JSON 하나만") :]
+    return head
+
+
+def _say(m: dict, d: dict) -> dict:
+    return {"id": m["id"], "role": m["role"], "persona": m["persona"], "temper": m["temper"], "name": agent_name(m), "text": str(d.get("opinion") or "")[:600], "stance": d.get("stance"), "picks": [x for x in (d.get("picks") or []) if isinstance(x, dict)][:3], "block": [str(x).upper() for x in (d.get("block") or [])][:10]}
+
+
+async def _team(a: dict, mkt: str, ctx: str, rec: dict) -> dict:
+    """장마다 하루 첫 판단은 팀 전체 토론 (전략가 → 분석가 → 리스크 → 매니저), 그 뒤 매시간은 매니저만 그 토론을 보고 판단"""
+    team = a.get("team") or preset("balanced")
+    day = _now().strftime("%Y-%m-%d") if mkt == "kr" else market.us_time().strftime("%Y-%m-%d")
+    last = (a.setdefault("debate", {}).get(mkt)) or {}
+    full = last.get("day") != day
+    if full:
+        talk: list[dict] = []
+        for role in ("strategist", "analyst", "risk"):
+            for m in [x for x in team if x["role"] == role]:
+                said = "\n".join(f"- {s['name']}: {s['text']}" + (f" (후보: {', '.join(p.get('side', '') + ' ' + str(p.get('code', '')) for p in s['picks'])})" if s["picks"] else "") for s in talk)
+                prompt = ctx + ("\n\n[앞선 팀원 의견]\n" + said if said else "") + "\n\n" + ASK[role]
+                try:
+                    talk.append(_say(m, _parse(await ai.ask_system(_agent_system(a, m, mkt), prompt), need_orders=False)))
+                except Exception as e:  # noqa: BLE001 - 한 명이 실패해도 토론은 계속
+                    talk.append({**_say(m, {}), "text": f"(의견을 받지 못함: {e.__class__.__name__})"})
+        block = sorted({c for s in talk if s["role"] == "risk" for c in s["block"]})
+        a["debate"][mkt] = {"day": day, "at": _iso(), "talk": talk, "block": block}
+        rec["debate"] = talk
+        rec["block"] = block
+    else:
+        rec["debateAt"] = last.get("at")
+    deb = a["debate"][mkt]
+    said = "\n".join(f"- {s['name']}: {s['text']}" + (f" (후보: {', '.join(p.get('side', '') + ' ' + str(p.get('code', '')) for p in s['picks'])})" if s["picks"] else "") for s in deb["talk"])
+    mgr = next(m for m in team if m["role"] == "manager")
+    prompt = ctx + f"\n\n[오늘 팀 토론 ({deb['at'][11:16]})]\n{said}\n[리스크 관리자가 반대한 종목 (매수 금지)] {', '.join(deb['block']) or '없음'}\n\n" + ("위 토론을 모아 최종 판단과 주문안을 JSON 으로." if full else "토론 뒤 가격이 바뀌었을 수 있다. 지금 데이터로 다시 보고 최종 판단과 주문안을 JSON 으로 (바꿀 이유가 없으면 주문 없음).")
+    d = _parse(await ai.ask_system(_agent_system(a, mgr, mkt), prompt))
+    rec["manager"] = agent_name(mgr)
+    return d
 
 
 # ---------- 보고·기록 ----------
@@ -440,6 +564,27 @@ async def run_forever() -> None:
         await asyncio.sleep(60)
 
 
+# ---------- 계좌 만들기 · 팀 바꾸기 ----------
+def create(name: str, strategy: str, preset_key: str = "balanced") -> dict:
+    load()
+    if len(data["accounts"]) >= 6:
+        raise ValueError("가상 계좌는 6개까지입니다")
+    name = (name or "").strip()[:20] or ("가상 팀 (" + PRESET_NAMES.get(preset_key, "") + ")" if strategy == "team" else "가상 하네스 (AI)")
+    if strategy not in ("ai", "team") or (strategy == "team" and preset_key not in PRESETS):
+        raise ValueError("전략이 잘못됨")
+    a = _new_account(_next_id(), name, strategy, preset(preset_key) if strategy == "team" else [])
+    data["accounts"].append(a)
+    _save()
+    return a
+
+
+def set_team(a: dict, team: list[dict]) -> None:
+    a["team"] = check_team(team)
+    a["strategy"] = "team"
+    a["debate"] = {}  # 팀이 바뀌면 다음 판단에서 새로 토론
+    _save()
+
+
 # ---------- 화면 ----------
 async def view() -> dict:
     out = []
@@ -451,6 +596,8 @@ async def view() -> dict:
                 "name": a["name"],
                 "kind": a["kind"],
                 "strategy": a["strategy"],
+                "team": [{**m, "name": agent_name(m)} for m in a.get("team") or []],
+                "debate": a.get("debate") or {},
                 "enabled": a["enabled"],
                 "start": a["start"],
                 "createdAt": a["createdAt"],
@@ -462,4 +609,10 @@ async def view() -> dict:
                 "lastDecide": a["lastDecide"],
             }
         )
-    return {"accounts": out, "limits": LIMITS, "sessions": market.sessions(), "ai": ai.configured(), "running": state["running"], "lastError": state["lastError"], "fees": {"kr": FEE_KR, "krTax": TAX_KR, "us": FEE_US}}
+    catalog = {
+        "roles": {k: {"name": v[0], "desc": v[1]} for k, v in ROLES.items()},
+        "personas": {k: {"name": v[0], "desc": v[1]} for k, v in PERSONAS.items()},
+        "tempers": {k: {"name": v[0], "desc": v[1]} for k, v in TEMPERS.items()},
+        "presets": {k: {"name": PRESET_NAMES[k], "team": preset(k)} for k in PRESETS},
+    }
+    return {"accounts": out, "catalog": catalog, "limits": LIMITS, "sessions": market.sessions(), "ai": ai.configured(), "running": state["running"], "lastError": state["lastError"], "fees": {"kr": FEE_KR, "krTax": TAX_KR, "us": FEE_US}}
