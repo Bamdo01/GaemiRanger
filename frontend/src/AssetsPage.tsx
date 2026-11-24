@@ -199,7 +199,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
           </div>
           {colorBy === 'profit' ? <Legend palette={palette} scale={30} low="▼ 손실" high="이익 ▲" /> : <Legend palette={palette} />}
         </section>
-        {has && <HoldTable port={port} onPick={goStock} onAdd={live ? addFor : undefined} flash={flash} />}
+        {has && <HoldTable port={port} onPick={goStock} onAdd={live ? addFor : undefined} flash={flash} grouped={acct === 'all'} />}
         </div>
 
         <div className="as-side">
@@ -251,6 +251,9 @@ function MobileAssets(p: {
   const has = port.rows.length > 0;
   const rows = [...port.rows].sort((a, b) => b.amt - a.amt);
   const profit = p.colorBy === 'profit';
+  // 전체 계좌이고 계좌가 둘 이상이면 계좌별로 묶는다
+  const groups = p.acct === 'all' ? groupByAccount(rows) : [];
+  const mSections: { g?: Group; rows: Row[] }[] = groups.length > 1 ? groups.map((g) => ({ g, rows: g.rows })) : [{ rows }];
   const pctOf = (a: number) => (port.total ? (a / port.total) * 100 : 0);
   return (
     <div className="assets m-assets">
@@ -329,13 +332,23 @@ function MobileAssets(p: {
           </>
         ) : (
           <ul className="m-rows">
-            {rows.map((r) => {
+            {mSections.map(({ g, rows: rs }) => [
+              g && (
+                <li key={`g:${g.id}`} className="m-grp">
+                  <span className="m-grp-name">{g.name}</span>
+                  <span className="m-grp-amt">
+                    {fmt(g.amt)}원 <span className={tone(profit ? g.pnl : g.todayPnl)}>{signed(profit ? g.pnl : g.todayPnl)}원</span>
+                  </span>
+                </li>
+              ),
+              ...rs.map((r) => {
               const v = profit ? r.profit : r.today;
               const won = profit ? r.pnl : r.todayPnl;
-              const isOpen = open === r.code;
+              const key = `${g?.id ?? ''}:${r.code}`;
+              const isOpen = open === key;
               return (
-                <li key={r.code} className={p.flash[r.code] ? `flash-${p.flash[r.code]}` : undefined}>
-                  <button type="button" className="m-row" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? '' : r.code)}>
+                <li key={key} className={p.flash[r.code] ? `flash-${p.flash[r.code]}` : undefined}>
+                  <button type="button" className="m-row" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? '' : key)}>
                     <span className="m-ava" style={{ background: AVATAR[r.asset] ?? AVATAR.etc }} aria-hidden="true">
                       {r.s.name.replace(ETF_PREFIX, '').slice(0, r.asset === 'us' ? 1 : 2)}
                     </span>
@@ -398,7 +411,8 @@ function MobileAssets(p: {
                   )}
                 </li>
               );
-            })}
+              }),
+            ])}
             {port.cash > 0 && (
               <li>
                 <div className="m-row">
@@ -548,6 +562,10 @@ function Weights({ port }: { port: Portfolio }) {
 
 /* ---------- 표 ---------- */
 type Col = { key: string; label: string; get: (r: Row) => number | string; show: (r: Row, maxAbs: number) => ReactNode; num?: boolean };
+const GROUP_BY: Opt = [
+  ['acct', '계좌별'],
+  ['stock', '종목별'],
+];
 const COLS: Col[] = [
   { key: 'name', label: '종목', get: (r) => r.s.name, show: (r) => r.s.name },
   { key: 'qty', label: '수량', get: (r) => r.qty, show: (r) => qtyText(r), num: true },
@@ -573,21 +591,82 @@ const COLS: Col[] = [
   { key: 'weight', label: '비중', get: (r) => r.weight, show: (r) => `${r.weight.toFixed(1)}%`, num: true },
 ];
 
-function HoldTable({ port, onPick, onAdd, flash = {} }: { port: Portfolio; onPick: (c: string) => void; onAdd?: (r: Row) => void; flash?: Record<string, 'up' | 'dn'> }) {
+/** 전체 계좌일 때 계좌별로 묶는다 (2026-11-24 사용자). 한 종목이 여러 계좌에 있으면 수량대로 나눈다.
+ *  계좌별 평균단가는 따로 없어서 전체 평균단가로 손익을 계산한다 (근삿값) */
+type Group = { id: string; name: string; rows: Row[]; amt: number; pnl: number; todayPnl: number };
+function groupByAccount(rows: Row[]): Group[] {
+  const by = new Map<string, Group>();
+  const invest = rows.reduce((a, r) => a + r.amt, 0) || 1;
+  for (const r of rows) {
+    const accs = r.accounts.length ? r.accounts : [{ id: 'etc', name: '기타', qty: r.qty }];
+    for (const a of accs) {
+      if (!a.qty) continue;
+      const k = a.qty / (r.qty || 1);
+      const part: Row = { ...r, qty: a.qty, sellable: Math.min(r.sellable, a.qty), amt: r.amt * k, pnl: r.pnl * k, todayPnl: r.todayPnl * k, weight: ((r.amt * k) / invest) * 100, accounts: [a] };
+      const g = by.get(a.id) ?? { id: a.id, name: a.name, rows: [], amt: 0, pnl: 0, todayPnl: 0 };
+      g.rows.push(part);
+      g.amt += part.amt;
+      g.pnl += part.pnl;
+      g.todayPnl += part.todayPnl;
+      by.set(a.id, g);
+    }
+  }
+  return [...by.values()].sort((a, b) => b.amt - a.amt);
+}
+
+function HoldTable({ port, onPick, onAdd, flash = {}, grouped = false }: { port: Portfolio; onPick: (c: string) => void; onAdd?: (r: Row) => void; flash?: Record<string, 'up' | 'dn'>; grouped?: boolean }) {
   const [sort, setSort] = useState<{ key: string; desc: boolean }>({ key: 'amt', desc: true });
+  const groups = useMemo(() => (grouped ? groupByAccount(port.rows) : []), [grouped, port.rows]);
+  const multi = groups.length > 1;
+  const [mode, setMode] = useState<'acct' | 'stock'>('acct');
+  const byAcct = multi && mode === 'acct';
   const col = COLS.find((c) => c.key === sort.key)!;
   const maxAbs = Math.max(1, ...port.rows.map((r) => Math.abs(r.pnl)));
-  const rows = [...port.rows].sort((a, b) => {
+  const sorter = (a: Row, b: Row) => {
     const x = col.get(a);
     const y = col.get(b);
     const d = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'ko');
     return sort.desc ? -d : d;
-  });
+  };
+  const rows = [...port.rows].sort(sorter);
+  const sections: { g?: Group; rows: Row[] }[] = byAcct ? groups.map((g) => ({ g, rows: [...g.rows].sort(sorter) })) : [{ rows }];
+  const ncol = COLS.length + (onAdd ? 1 : 0);
+  const rowEl = (r: Row, key: string) => (
+    <tr key={key} className={flash[r.code] ? `flash-${flash[r.code]}` : undefined}>
+      {COLS.map((c) => (
+        <td key={c.key} className={c.num ? 'num' : undefined}>
+          {c.key === 'name' && (r.asset === 'kr' || r.asset === 'us') ? (
+            <button type="button" className="tname" onClick={() => onPick(r.code)}>
+              {r.s.name} <small>{r.code}</small>
+            </button>
+          ) : c.key === 'name' ? (
+            <span className="tname">
+              {r.s.name} <small>{r.s.sector}</small>
+            </span>
+          ) : c.key === 'price' && r.manualPrice && onAdd ? (
+            <PriceCell r={r} />
+          ) : (
+            c.show(r, maxAbs)
+          )}
+        </td>
+      ))}
+      {onAdd && (
+        <td className="num">
+          <button type="button" className="btn sm add-btn" onClick={() => onAdd(r)} aria-label={`${r.s.name} 기록 추가`} title="이 종목 기록 추가">
+            ＋
+          </button>
+        </td>
+      )}
+    </tr>
+  );
   return (
     <section className="card" aria-labelledby="h-tbl">
       <div className="card-head">
-        <h2 id="h-tbl">보유 종목 표</h2>
-        <span className="sub">열 머리를 누르면 정렬 · 금액은 원(달러는 환율로 환산) · 비중은 현금 뺀 투자 기준</span>
+        <h2 id="h-tbl">{byAcct ? '계좌별 보유' : '보유 종목 표'}</h2>
+        {multi && <Seg id="표 묶음" label="" list={GROUP_BY} cur={mode} onPick={(v) => setMode(v as 'acct' | 'stock')} />}
+        <span className="sub">
+          열 머리를 누르면 정렬 · 금액은 원(달러는 환율로 환산) · 비중은 현금 뺀 투자 기준{byAcct ? ' · 계좌별 손익은 전체 평균단가로 계산한 근삿값' : ''}
+        </span>
       </div>
       <div className="tbl-wrap">
         <table className="tbl">
@@ -604,36 +683,23 @@ function HoldTable({ port, onPick, onAdd, flash = {} }: { port: Portfolio; onPic
               {onAdd && <th aria-label="기록" />}
             </tr>
           </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.code} className={flash[r.code] ? `flash-${flash[r.code]}` : undefined}>
-                {COLS.map((c) => (
-                  <td key={c.key} className={c.num ? 'num' : undefined}>
-                    {c.key === 'name' && r.asset === 'kr' ? (
-                      <button type="button" className="tname" onClick={() => onPick(r.code)}>
-                        {r.s.name} <small>{r.code}</small>
-                      </button>
-                    ) : c.key === 'name' ? (
-                      <span className="tname">
-                        {r.s.name} <small>{r.s.sector}</small>
-                      </span>
-                    ) : c.key === 'price' && r.manualPrice && onAdd ? (
-                      <PriceCell r={r} />
-                    ) : (
-                      c.show(r, maxAbs)
-                    )}
-                  </td>
-                ))}
-                {onAdd && (
-                  <td className="num">
-                    <button type="button" className="btn sm add-btn" onClick={() => onAdd(r)} aria-label={`${r.s.name} 기록 추가`} title="이 종목 기록 추가">
-                      ＋
-                    </button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
+          {sections.map(({ g, rows: rs }) => (
+            <tbody key={g?.id ?? 'all'}>
+              {g && (
+                <tr className="acct-grp">
+                  <th colSpan={ncol} scope="rowgroup">
+                    <span className="acct-grp-name">{g.name}</span>
+                    <span className="num">{fmt(g.amt)}원</span>
+                    <span className={`num ${tone(g.pnl)}`}>
+                      {arrow(g.pnl)} {signed(g.pnl)}원
+                    </span>
+                    <span className="num sub">투자의 {((g.amt / (port.stockValue || 1)) * 100).toFixed(1)}%</span>
+                  </th>
+                </tr>
+              )}
+              {rs.map((r) => rowEl(r, `${g?.id ?? ''}:${r.code}`))}
+            </tbody>
+          ))}
           <tfoot>
             <tr>
               <td>현금</td>

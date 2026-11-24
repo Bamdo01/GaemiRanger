@@ -621,3 +621,25 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
   .us-stock .kv { grid-template-columns: 1fr; }
   .us-stock .kv > div { display: flex; justify-content: space-between; gap: 12px; }
 }
+
+/* 전체 계좌 표: 계좌별 묶음 머리 (2026-11-24) */
+.tbl tr.acct-grp th { position: static; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); text-align: left; padding: 12px 8px 6px; font-weight: 600; border-bottom: 1px solid var(--line); background: transparent; }
+.tbl tr.acct-grp th > span { margin-right: 14px; }
+.acct-grp-name { font-size: 14px; color: var(--ink); }
+.m-grp { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 14px 2px 6px; border-bottom: 1px solid var(--line); }
+.m-grp-name { font-weight: 700; font-size: 14px; }
+.m-grp-amt { font-size: 13px; color: var(--sec); }
+
+/* 투자 하네스 (2026-11-25) */
+.hn-state { font-size: 12.5px; padding: 2px 10px; border-radius: 999px; background: var(--seg); color: var(--sec); }
+.hn-state.on { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); }
+.hn-next { margin: 0 0 10px; padding-left: 18px; color: var(--sec); font-size: 13px; }
+.hn-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.hn-log > li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.hn-log > li:last-child { border-bottom: 0; }
+.hn-log p { margin: 6px 0 0; line-height: 1.5; }
+.hn-log-head { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--sec); }
+.hn-orders { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+.hn-orders li + li { margin-top: 4px; }
+.hn-why { max-width: 360px; white-space: normal; color: var(--sec); font-size: 12.5px; }
+.hn-rules { margin: 0; padding-left: 18px; line-height: 1.7; font-size: 13px; color: var(--sec); }

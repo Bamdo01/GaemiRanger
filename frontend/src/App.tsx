@@ -7,6 +7,7 @@ import MarketPage from './MarketPage';
 import OrderPage from './OrderPage';
 import RulesPage from './RulesPage';
 import LogPage from './LogPage';
+import HarnessPage from './HarnessPage';
 import SettingsPage from './SettingsPage';
 import StockPage, { StockHome } from './StockPage';
 import { useIsMobile, usePalette } from './hooks';
@@ -18,6 +19,7 @@ const MENU: [string, string][] = [
   ['order', '주문'],
   ['assets', '내 자산'],
   ['rules', '규칙'],
+  ['harness', '하네스'],
   ['log', '기록'],
   ['settings', '설정'],
 ];
@@ -86,6 +88,7 @@ export default function App() {
           <Route path="/order" element={<OrderPage />} />
           <Route path="/rules" element={<RulesPage />} />
           <Route path="/log" element={<LogPage />} />
+          <Route path="/harness" element={<HarnessPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/:menu" element={<MenuSoon />} />
         </Routes>
@@ -137,6 +140,7 @@ const TABS: [string, string, string][] = [
   ['rules', '규칙', 'flag'],
 ];
 const MORE: [string, string][] = [
+  ['harness', '하네스 (가상 자동매매)'],
   ['order', '주문'],
   ['log', '기록'],
   ['settings', '설정'],

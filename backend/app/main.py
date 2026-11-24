@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import activity, ai, alerts, auth, guard, config, ledger, market, orders, prices, realtime, rules, settings, telegram, views
+from . import activity, ai, alerts, auth, guard, config, harness, ledger, market, orders, prices, realtime, rules, settings, telegram, views
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
@@ -31,6 +31,7 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(rules.run_forever()),
         asyncio.create_task(alerts.run_forever()),
         asyncio.create_task(guard.run_forever()),
+        asyncio.create_task(harness.run_forever()),
     ]
     yield
     for t in tasks:
@@ -488,6 +489,46 @@ async def ai_chat(b: ai.ChatIn):
     q = "세 줄 리뷰" if b.review else b.messages[-1].content[:60]
     activity.log("ai", f"AI {ai.INVESTORS[b.investor].split(' (')[0]} 관점: {q}")
     return StreamingResponse(gen, media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
+# ---------- 투자 하네스 (가상 계좌) ----------
+class HarnessOn(BaseModel):
+    on: bool
+
+
+class HarnessRun(BaseModel):
+    market: str
+
+
+@app.get("/api/harness", dependencies=api)
+async def get_harness():
+    return await harness.view()
+
+
+@app.post("/api/harness/{aid}/enabled", dependencies=api)
+def set_harness(aid: str, b: HarnessOn):
+    a = harness.account(aid)
+    if not a:
+        raise HTTPException(404, "없는 하네스 계좌입니다")
+    a["enabled"] = b.on
+    harness._save()
+    activity.log("harness", f"{a['name']} {'켬' if b.on else '끔'}")
+    return {"ok": True}
+
+
+@app.post("/api/harness/{aid}/decide", dependencies=api + [Depends(need_kis)])
+async def run_harness(aid: str, b: HarnessRun):
+    a = harness.account(aid)
+    if not a:
+        raise HTTPException(404, "없는 하네스 계좌입니다")
+    if b.market not in ("kr", "us") or not harness.session_open(b.market):
+        raise HTTPException(400, "그 시장의 정규장 시간에만 지금 판단할 수 있습니다")
+    if not ai.configured():
+        raise HTTPException(400, "AI 가 연결돼 있지 않습니다")
+    if harness.state["running"]:
+        raise HTTPException(409, "이미 판단하는 중입니다")
+    activity.log("harness", f"{a['name']} 지금 판단 ({b.market})")
+    return await harness.decide(a, b.market, "직접 요청")
 
 
 # ---------- 자산 지킴이 ----------

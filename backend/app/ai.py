@@ -276,6 +276,19 @@ async def ask_once(prompt: str, ctx: str) -> str:
     return "".join(b.text for b in r.content if b.type == "text")
 
 
+async def ask_system(system: str, prompt: str, max_tokens: int = 1500) -> str:
+    """지시문을 따로 주는 한 번짜리 질문 (가상 하네스의 매매 판단). 도구 없음, 하루 한도에 같이 센다"""
+    _count_one()
+    msgs = [{"role": "user", "content": prompt}]
+    if backend() == "claude-code":
+        out = []
+        async for t in _claude_code(system, msgs):
+            out.append(t)
+        return "".join(out)
+    r = await client().messages.create(model=config.AI_MODEL, max_tokens=max_tokens, system=system, messages=msgs)
+    return "".join(b.text for b in r.content if b.type == "text")
+
+
 # ---------- 알림 요약 (alerts 가 사건이 있을 때만 부른다) ----------
 BRIEF = """방금 아래 알림이 생겼다. 위 포트폴리오 숫자를 근거로 꼭 세 줄로 답해라. 줄마다 '- '로 시작, 한 줄은 한 문장.
 1) 무슨 일인지 (알림에 있는 사실만. 뉴스는 제목만 있으니 본문을 지어내지 말 것)
