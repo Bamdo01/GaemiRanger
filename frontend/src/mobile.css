@@ -186,3 +186,10 @@
   .emergency .em-form { width: 100%; }
   .emergency .em-form .btn { flex: 1; justify-content: center; }
 }
+
+/* 장 상태·지수 줄: 휴대폰은 화면 끝까지 밀어 본다 */
+@media (max-width: 760px) {
+  .mbar { margin: 0 -12px; padding: 0 12px 2px; }
+  .mbar > * { border: 0; padding: 8px 12px; }
+  .st-price .st-sess { align-self: flex-start; }
+}

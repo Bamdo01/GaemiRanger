@@ -301,12 +301,15 @@ def _check_moves(ts: list[dict], s: dict) -> list[dict]:
     evs = []
     now = time.time()
     is_open = market.market_open()
+    us_regular = market.us_session()["code"] == "regular"
     open_min = (_now().hour * 60 + _now().minute) - 9 * 60
     for t in ts:
         if not t["price"] or now - t["at"] > 180:
             continue  # 오래된 값은 보지 않는다
         if t["asset"] in ("kr", "gold") and not is_open:
             continue
+        if t["asset"] == "us" and not us_regular:
+            continue  # 프리·애프터·주간거래는 거래가 적어 가격이 튄다 → 미국 정규장만
         h = _hist.setdefault(t["code"], deque(maxlen=90))
         h.append((now, float(t["price"]), int(t["vol"] or 0)))
         span = s["moveMin"] * 60

@@ -23,7 +23,7 @@ export type Stock = {
   upper?: number;
   lower?: number;
 };
-export type Index = { id: string; name: string; prev: number; value: number };
+export type Index = { id: string; name: string; prev: number; value: number; group?: string };
 export type Holding = {
   code: string;
   qty: number;
@@ -109,6 +109,8 @@ export const STOCK_BY_CODE = new Map(STOCKS.map((s) => [s.code, s]));
 export const INDICES: Index[] = [
   { id: 'kospi', name: '코스피', prev: 2619.3, value: 2641.32 },
   { id: 'kosdaq', name: '코스닥', prev: 748.1, value: 743.85 },
+  { id: 'nasdaq', name: '나스닥', prev: 22617.7, value: 22801.4 },
+  { id: 'sp500', name: 'S&P 500', prev: 6910.4, value: 6938.2 },
   { id: 'usdkrw', name: '원/달러', prev: 1384.5, value: 1381.2 },
 ];
 

@@ -133,7 +133,7 @@ async def poll_forever() -> None:
         now = time.time()
         if config.kis_configured():
             try:
-                if need_fx and now - last_fx > 60:
+                if now - last_fx > (60 if need_fx else 300):  # 시장 화면의 원/달러에도 쓴다
                     await fetch_fx()
                     last_fx = now
                 golds = _gold_symbols()

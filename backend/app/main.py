@@ -128,6 +128,7 @@ def status(req: Request):
         if auth.logged_in(req)
         else None,
         "marketOpen": market.market_open(),
+        "sessions": market.sessions(),
     }
 
 
@@ -159,7 +160,11 @@ api = [Depends(auth.require_login)]
 @app.get("/api/market", dependencies=api + [Depends(need_kis)])
 def get_market():
     stocks = [market.quotes[c] for c, _, _ in UNIVERSE if c in market.quotes]
-    return {"indices": list(market.indices.values()), "stocks": stocks, "total": len(UNIVERSE), "at": max([s["at"] for s in stocks], default=None)}
+    order = ["kospi", "kosdaq", "kospi200", "nasdaq", "sp500", "dow", "nasdaq100", "sox"]
+    idx = sorted(market.indices.values(), key=lambda i: order.index(i["id"]) if i["id"] in order else 99)
+    if prices.fx.get("usd"):
+        idx.append({"id": "usdkrw", "name": "원/달러", "value": prices.fx["usd"], "prev": prices.fx.get("prev") or prices.fx["usd"], "group": "fx", "at": prices.fx.get("at")})
+    return {"indices": idx, "sessions": market.sessions(), "stocks": stocks, "total": len(UNIVERSE), "at": max([s["at"] for s in stocks], default=None)}
 
 
 @app.get("/api/portfolio", dependencies=api + [Depends(need_kis)])

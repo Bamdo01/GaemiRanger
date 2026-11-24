@@ -3,7 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Heatmap, { Legend, type Tile } from './Heatmap';
 import { useMarket } from './hooks';
 import { sampleTrade } from './data';
-import { arrow, changeText, fmt, fmt2, kstTime, shares, signed, signPct, tone, won, type Palette } from './lib';
+import { arrow, changeText, fmt, shares, signed, signPct, stampOf, tone, won, type Palette } from './lib';
+import MarketBar from './Indices';
 import { usePortfolio } from './portfolio';
 import { Seg, type Opt } from './Pickers';
 
@@ -86,20 +87,8 @@ export default function MarketPage({ palette }: Props) {
 
   return (
     <div className="market">
+      <MarketBar status={status} indices={indices} />
       <section className="summary" aria-label="요약">
-        {indices.map((i) => {
-          const d = i.value - i.prev;
-          const p = (d / i.prev) * 100;
-          return (
-            <div key={i.id} className="sum-item">
-              <span className="sum-k">{i.name}</span>
-              <b className="sum-v">{fmt2(i.value)}</b>
-              <span className={tone(d)}>
-                {arrow(d)} {signed(d, fmt2)} ({signPct(p)})
-              </span>
-            </div>
-          );
-        })}
         <Link to="/assets" className="sum-item sum-link" title="내 자산으로">
           <span className="sum-k">내 자산</span>
           <b className="sum-v">{fmt(port.total)}원</b>
@@ -109,7 +98,7 @@ export default function MarketPage({ palette }: Props) {
         </Link>
         <span className="grow" />
         <span className="stamp">
-          {status.open ? `${kstTime(at)} 기준 · 10초마다 갱신` : status.label}
+          {status.moving ? `${stampOf(status, at)} · 10초마다 갱신` : status.label}
           <em>{live ? `한투 · ${stocks.length}/50종목${error ? ` · 갱신 실패: ${error}` : ''}` : '예시 데이터'}</em>
         </span>
       </section>

@@ -6,7 +6,8 @@ import Heatmap, { Legend, type Tile } from './Heatmap';
 import { useIsMobile, useMarket } from './hooks';
 import { GuardMini } from './Guard';
 import Icon from './Icon';
-import { arrow, changeText, fmt, kstTime, signed, tone, type Palette } from './lib';
+import { arrow, changeText, fmt, signed, stampOf, tone, type Palette } from './lib';
+import MarketBar from './Indices';
 import { put, refreshAll } from './api';
 import LedgerDrawer, { type Candidate, type Prefill } from './LedgerDrawer';
 import { LiveBadge, MovesCard, useFlash } from './Moves';
@@ -85,6 +86,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
     return (
       <>
         <LedgerDrawer open={drawer !== null} prefill={drawer} onClose={closeDrawer} candidates={candidates} />
+        <MarketBar status={status} indices={indices} />
         <MobileAssets
           port={port}
           live={live}
@@ -99,7 +101,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
           onRecord={() => setDrawer({})}
           addFor={live ? addFor : undefined}
           kospiPct={kospiPct}
-          stamp={status.open ? `${kstTime(at)} 기준` : status.label}
+          stamp={stampOf(status, at)}
           flash={flash}
         />
       </>
@@ -133,7 +135,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
         <div className="sum-item">
           <span className="sum-k">총자산</span>
           <b className="sum-v">{fmt(port.total)}원</b>
-          <span className="sum-s">{status.open ? `${kstTime(at)} 기준` : status.label} · {live ? acctName : '예시 데이터'}</span>
+          <span className="sum-s">{stampOf(status, at)} · {live ? acctName : '예시 데이터'}</span>
         </div>
         <Sum k="평가손익" v={`${signed(port.pnl)}원`} s={changeText(port.pnlPct)} t={port.pnl} />
         <Sum k="오늘 손익" v={`${signed(port.todayPnl)}원`} s={`${changeText(port.todayPct)} · 코스피 ${changeText(kospiPct)}`} t={port.todayPnl} />

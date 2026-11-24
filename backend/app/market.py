@@ -42,6 +42,7 @@ def _f(v) -> float:
 
 
 def market_open(now: datetime | None = None) -> bool:
+    """국내 정규장 (9:00~15:30). 규칙 발동·주문 정정은 이때만"""
     n = now or datetime.now(KST)
     if n.weekday() >= 5:
         return False
@@ -49,9 +50,58 @@ def market_open(now: datetime | None = None) -> bool:
     return 9 * 60 <= m < 15 * 60 + 30
 
 
+# ---------- 시장별 거래 시간 (토스처럼 프리·정규·애프터, 미국은 주간거래까지). 공휴일은 아직 반영 안 함 ----------
+def kr_session(now: datetime | None = None) -> dict:
+    """국내: 넥스트레이드 프리마켓 08:00~08:50, 정규장 09:00~15:30, 애프터마켓 15:40~20:00"""
+    n = (now or datetime.now(KST)).astimezone(KST)
+    m = n.hour * 60 + n.minute
+    if n.weekday() >= 5:
+        return {"code": "closed", "label": "휴장"}
+    for a, b, code, label in ((480, 530, "pre", "프리마켓"), (540, 930, "regular", "정규장"), (940, 1200, "after", "애프터마켓")):
+        if a <= m < b:
+            return {"code": code, "label": label}
+    return {"code": "closed", "label": "장 시작 전" if m < 540 else "장 마감"}
+
+
+def _nth_sunday(y: int, mo: int, k: int) -> date:
+    d = date(y, mo, 1)
+    return d + timedelta(days=(6 - d.weekday()) % 7 + 7 * (k - 1))
+
+
+def us_time(now: datetime | None = None) -> datetime:
+    """뉴욕 시간. 서머타임: 3월 둘째 일요일 02:00 ~ 11월 첫째 일요일 02:00 (현지)"""
+    u = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    start = datetime.combine(_nth_sunday(u.year, 3, 2), datetime.min.time(), timezone.utc) + timedelta(hours=7)
+    end = datetime.combine(_nth_sunday(u.year, 11, 1), datetime.min.time(), timezone.utc) + timedelta(hours=6)
+    return u + timedelta(hours=-4 if start <= u < end else -5)
+
+
+def us_session(now: datetime | None = None) -> dict:
+    """미국 (뉴욕 시간): 주간거래 20:00~04:00, 프리마켓 04:00~09:30, 정규장 09:30~16:00, 애프터마켓 16:00~20:00"""
+    e = us_time(now)
+    wd, t = e.weekday(), e.hour * 60 + e.minute
+    if wd < 5 and 240 <= t < 1200:
+        for a, b, code, label in ((240, 570, "pre", "프리마켓"), (570, 960, "regular", "정규장"), (960, 1200, "after", "애프터마켓")):
+            if a <= t < b:
+                return {"code": code, "label": label}
+    if (t >= 1200 and wd in (6, 0, 1, 2, 3)) or (t < 240 and wd < 5):
+        return {"code": "day", "label": "주간거래"}
+    return {"code": "closed", "label": "휴장" if wd >= 5 else "장 마감"}
+
+
+def sessions(now: datetime | None = None) -> dict:
+    return {"kr": kr_session(now), "us": us_session(now)}
+
+
+def kr_active(now: datetime | None = None) -> bool:
+    """국내 가격이 움직이는 시간 (프리·정규·애프터)"""
+    return kr_session(now)["code"] != "closed"
+
+
 # ---------- 한 건씩 받아 오기 ----------
 async def fetch_quote(code: str) -> dict:
-    d = (await kis.get(QUOTE, "FHKST01010100", {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code}))["output"]
+    # UN = KRX + 넥스트레이드 통합 (2026-11-24 확인: 넥스트레이드에 없는 ETF 도 KRX 값이 온다). 애프터마켓에도 가격이 움직인다
+    d = (await kis.get(QUOTE, "FHKST01010100", {"FID_COND_MRKT_DIV_CODE": "UN", "FID_INPUT_ISCD": code}))["output"]
     price = _i(d.get("stck_prpr"))
     prev = _i(d.get("stck_sdpr")) or price - _i(d.get("prdy_vrss"))
     q = {
@@ -81,7 +131,30 @@ async def fetch_quote(code: str) -> dict:
 async def fetch_index(iid: str, code: str, name: str) -> None:
     d = (await kis.get(INDEX, "FHPUP02100000", {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": code}))["output"]
     v = _f(d.get("bstp_nmix_prpr"))
-    indices[iid] = {"id": iid, "name": name, "value": v, "prev": round(v - _f(d.get("bstp_nmix_prdy_vrss")), 2), "at": time.time()}
+    indices[iid] = {"id": iid, "name": name, "value": v, "prev": round(v - _f(d.get("bstp_nmix_prdy_vrss")), 2), "group": "kr", "at": time.time()}
+
+
+OVRS_DAILY = "/uapi/overseas-price/v1/quotations/inquire-daily-chartprice"
+# 해외지수 (2026-11-24 실전 확인: COMP, SPX, NDX, SOX 는 요약값이 오고 .DJI 는 일별 행에만 값이 있다)
+OVRS_INDICES = [("nasdaq", "COMP", "나스닥"), ("sp500", "SPX", "S&P 500"), ("dow", ".DJI", "다우존스"), ("nasdaq100", "NDX", "나스닥 100"), ("sox", "SOX", "필라델피아 반도체")]
+
+
+async def fetch_ovrs_index(iid: str, code: str, name: str) -> None:
+    today = date.today()
+    d = await kis.get(
+        OVRS_DAILY,
+        "FHKST03030100",
+        {"FID_COND_MRKT_DIV_CODE": "N", "FID_INPUT_ISCD": code, "FID_INPUT_DATE_1": (today - timedelta(days=10)).strftime("%Y%m%d"), "FID_INPUT_DATE_2": today.strftime("%Y%m%d"), "FID_PERIOD_DIV_CODE": "D"},
+    )
+    o = d.get("output1") or {}
+    rows = [r for r in (d.get("output2") or []) if _f(r.get("ovrs_nmix_prpr")) > 0]
+    v = _f(o.get("ovrs_nmix_prpr"))
+    prev = _f(o.get("ovrs_nmix_prdy_clpr"))
+    if not v and rows:  # 요약값이 비면 일별 행 (최근 것이 앞)
+        v = _f(rows[0]["ovrs_nmix_prpr"])
+        prev = _f(rows[1]["ovrs_nmix_prpr"]) if len(rows) > 1 else v
+    if v > 0:
+        indices[iid] = {"id": iid, "name": name, "value": v, "prev": prev or v, "group": "us", "at": time.time()}
 
 
 async def fetch_balance() -> dict:
@@ -315,7 +388,7 @@ async def fetch_multi(codes: list[str]) -> None:
         part = codes[k : k + 30]
         p: dict = {}
         for n, c in enumerate(part, 1):
-            p[f"FID_COND_MRKT_DIV_CODE_{n}"] = "J"
+            p[f"FID_COND_MRKT_DIV_CODE_{n}"] = "UN"  # 통합 시세
             p[f"FID_INPUT_ISCD_{n}"] = c
         d = await kis.get(MULTI, "FHKST11300006", p)
         now = time.time()
@@ -344,6 +417,9 @@ def _prefetch_candles(codes: list[str]) -> None:
         _later(f"pre:{c}", fetch_candles(c, "D"))
 
 
+_ovrs_at = [0.0]
+
+
 async def poll_forever() -> None:
     order = [c for c, _, _ in UNIVERSE]
     i = 0
@@ -351,7 +427,7 @@ async def poll_forever() -> None:
         if not config.kis_configured():
             await asyncio.sleep(30)
             continue
-        is_open = market_open()
+        is_open = kr_active()  # 프리·애프터마켓에도 빠르게
 
         async def safe(coro) -> None:
             # 하나가 실패해도 나머지는 계속 (실패는 kis.last_error 에 남고 다음 차례에 다시)
@@ -364,6 +440,14 @@ async def poll_forever() -> None:
 
         await safe(fetch_index("kospi", "0001", "코스피"))
         await safe(fetch_index("kosdaq", "1001", "코스닥"))
+        if "kospi200" not in indices or is_open:
+            await safe(fetch_index("kospi200", "2001", "코스피 200"))
+        # 해외지수: 미국장이 열려 있으면 30초, 아니면 10분마다
+        us_open = us_session()["code"] in ("pre", "regular", "after")
+        if time.time() - _ovrs_at[0] > (30 if us_open else 600):
+            _ovrs_at[0] = time.time()
+            for iid, code, name in OVRS_INDICES:
+                await safe(fetch_ovrs_index(iid, code, name))
         await safe(fetch_balance())
         # 한투 보유 + 수기 계좌의 국내 종목은 매번 받는다
         held = [h["code"] for h in balance.get("holdings", [])] + ledger.kr_codes()

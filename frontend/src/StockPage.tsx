@@ -4,7 +4,7 @@ import { post, useMode, usePoll, useServer } from './api';
 import Chart from './Chart';
 import { HOLDINGS, STOCKS, groupCandles, priceLimits, sampleBook, sampleDaily, sampleTrade, tickOf, type Candle, type Stock } from './data';
 import { useMarket } from './hooks';
-import { arrow, changeText, fmt, kstTime, shares, signed, tone, won } from './lib';
+import { arrow, changeText, fmt, krSession, kstTime, shares, signed, tone, won } from './lib';
 import { usePortfolio } from './portfolio';
 
 // 종목 페이지 (2026-11-18): UI 시안 A안 "프로 터미널" 배치. 관심종목 | 차트 | 호가 | 주문, 아래 종목 정보·내 보유.
@@ -98,7 +98,7 @@ export default function StockPage() {
         </button>
       </div>
       <p className="st-foot">
-        {status.open ? `${kstTime(at)} 기준` : status.label} · {live ? (mode.real ? '한투 실전 계좌 · 주문은 실제 돈으로 나갑니다' : '한투 모의투자 계좌 · 주문은 모의로 실제 접수됩니다') : '예시 데이터 (차트·호가·주문 모두 예시)'}
+        {status.kr.code !== 'closed' ? `${status.kr.label} · ${kstTime(at)} 기준` : status.kr.label} · {live ? (mode.real ? '한투 실전 계좌 · 주문은 실제 돈으로 나갑니다' : '한투 모의투자 계좌 · 주문은 모의로 실제 접수됩니다') : '예시 데이터 (차트·호가·주문 모두 예시)'}
       </p>
     </div>
   );
@@ -135,6 +135,7 @@ function StockHead({ s, live, watched, onWatch, onGo, stocks }: { s: Stock; live
           <span>
             {arrow(d)} {signed(d)} ({changeText((d / s.prev) * 100).replace(/^[▲▼] /, '')})
           </span>
+          <em className={`st-sess ${krSession().code !== 'closed' ? 'on' : ''}`}>{krSession().label}</em>
         </div>
       </div>
       <dl className="st-stats">

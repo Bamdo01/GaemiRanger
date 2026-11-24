@@ -32,25 +32,49 @@ function luminance(c: RGB) {
   return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
 }
 
-// ---------- 장 상태 (한국 시간 기준, 공휴일은 아직 반영 안 함) ----------
-export type MarketStatus = { open: boolean; label: string };
-export function marketStatus(d = new Date()): MarketStatus {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Seoul',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(d);
+// ---------- 장 상태 (토스처럼 프리·정규·애프터, 미국은 주간거래까지. 공휴일은 아직 반영 안 함) ----------
+// 서버(market.py sessions)와 같은 규칙. 화면은 브라우저 시계로 바로 계산한다
+export type Session = { code: 'pre' | 'regular' | 'after' | 'day' | 'closed'; label: string };
+export type MarketStatus = {
+  /** 국내 정규장 (규칙·주문 정정은 이때만) */
+  open: boolean;
+  /** 국내든 미국이든 가격이 움직이는 시간 */
+  moving: boolean;
+  kr: Session;
+  us: Session;
+  label: string;
+};
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function clock(d: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  const wd = get('weekday');
-  const mins = (Number(get('hour')) % 24) * 60 + Number(get('minute'));
-  if (wd === 'Sat' || wd === 'Sun') return { open: false, label: '휴장' };
-  if (mins < 9 * 60) return { open: false, label: '장 시작 전' };
-  if (mins >= 15 * 60 + 30) return { open: false, label: '장 마감' };
-  return { open: true, label: '장중' };
+  // 월=0 … 일=6 (파이썬 weekday 와 같게)
+  return { wd: (WD.indexOf(get('weekday')) + 6) % 7, m: (Number(get('hour')) % 24) * 60 + Number(get('minute')) };
+}
+export function krSession(d = new Date()): Session {
+  const { wd, m } = clock(d, 'Asia/Seoul');
+  if (wd >= 5) return { code: 'closed', label: '휴장' };
+  if (m >= 480 && m < 530) return { code: 'pre', label: '프리마켓' };
+  if (m >= 540 && m < 930) return { code: 'regular', label: '정규장' };
+  if (m >= 940 && m < 1200) return { code: 'after', label: '애프터마켓' };
+  return { code: 'closed', label: m < 540 ? '장 시작 전' : '장 마감' };
+}
+export function usSession(d = new Date()): Session {
+  const { wd, m } = clock(d, 'America/New_York'); // 서머타임은 브라우저가 맞춘다
+  if (wd < 5 && m >= 240 && m < 570) return { code: 'pre', label: '프리마켓' };
+  if (wd < 5 && m >= 570 && m < 960) return { code: 'regular', label: '정규장' };
+  if (wd < 5 && m >= 960 && m < 1200) return { code: 'after', label: '애프터마켓' };
+  if ((m >= 1200 && [6, 0, 1, 2, 3].includes(wd)) || (m < 240 && wd < 5)) return { code: 'day', label: '주간거래' };
+  return { code: 'closed', label: wd >= 5 ? '휴장' : '장 마감' };
+}
+export function marketStatus(d = new Date()): MarketStatus {
+  const kr = krSession(d);
+  const us = usSession(d);
+  return { open: kr.code === 'regular', moving: kr.code !== 'closed' || us.code !== 'closed', kr, us, label: `국내 ${kr.label} · 미국 ${us.label}` };
 }
 export const kstTime = (d: Date) => d.toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false });
+/** "국내 애프터마켓 · 미국 주간거래 · 21:09:30 기준". 둘 다 닫혀 있으면 시각은 빼고 */
+export const stampOf = (s: MarketStatus, at: Date) => (s.moving ? `${s.label} · ${kstTime(at)} 기준` : s.label);
 
 // ---------- squarified treemap ----------
 export type Rect = { x: number; y: number; w: number; h: number };
