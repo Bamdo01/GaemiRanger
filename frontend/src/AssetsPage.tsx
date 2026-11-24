@@ -41,7 +41,11 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
   const port = usePortfolio(stocks, acct);
   const k = indices.find((i) => i.id === 'kospi');
   const kospiPct = k ? ((k.value - k.prev) / k.prev) * 100 : 0;
-  const goStock = (c: string) => /^[0-9][0-9A-Z]{5}$/.test(c) && navigate(`/stock/${c}`);
+  // 국내·미국 주식만 종목 화면이 있다 (코인·금·기타는 없음)
+  const goStock = (c: string) => {
+    const a = port.rows.find((r) => r.code === c)?.asset ?? 'kr';
+    if ((a === 'kr' && /^[0-9][0-9A-Z]{5}$/.test(c)) || a === 'us') navigate(`/stock/${c}`);
+  };
 
   const flash = useFlash(port.rows);
   const tiles = useMemo(() => tilesOf(port, colorBy, flash), [port, colorBy, flash]);
@@ -378,7 +382,7 @@ function MobileAssets(p: {
                         ))}
                       </dl>
                       <div className="m-row-btns">
-                        {r.asset === 'kr' && (
+                        {(r.asset === 'kr' || r.asset === 'us') && (
                           <button type="button" className="m-btn" onClick={() => p.goStock(r.code)}>
                             종목 화면
                           </button>

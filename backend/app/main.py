@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import activity, ai, alerts, auth, guard, config, ledger, market, orders, prices, realtime, rules, settings, telegram
+from . import activity, ai, alerts, auth, guard, config, ledger, market, orders, prices, realtime, rules, settings, telegram, views
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
@@ -167,6 +167,33 @@ def get_market():
     return {"indices": idx, "sessions": market.sessions(), "stocks": stocks, "total": len(UNIVERSE), "at": max([s["at"] for s in stocks], default=None)}
 
 
+@app.get("/api/market/view", dependencies=api + [Depends(need_kis)])
+@kis_errors
+async def get_market_view(v: str = "kospi50"):
+    return await views.get_view(v)
+
+
+@app.get("/api/search", dependencies=api)
+async def get_search(q: str = ""):  # async: 뒤에서 순위를 받으려면 이벤트 루프 안이어야 한다
+    return {"hits": views.search(q[:30])}
+
+
+@app.get("/api/us/{sym}", dependencies=api + [Depends(need_kis)])
+@kis_errors
+async def get_us(sym: str):
+    if not views.is_us_symbol(sym.upper()):
+        raise HTTPException(400, "티커는 영문입니다 (예: AAPL)")
+    return await views.us_detail(sym)
+
+
+@app.get("/api/us/{sym}/candles", dependencies=api + [Depends(need_kis)])
+@kis_errors
+async def get_us_candles(sym: str, period: str = "D"):
+    if not views.is_us_symbol(sym.upper()) or period not in ("D", "W", "M"):
+        raise HTTPException(400, "잘못된 요청입니다")
+    return {"candles": await views.us_candles(sym, period)}
+
+
 @app.get("/api/portfolio", dependencies=api + [Depends(need_kis)])
 def get_portfolio(account: str = "all"):
     """모든 자산을 한 포트폴리오로: 한투(연동) + 수기 계좌. account = all | kis | 수기 계좌 id"""
@@ -312,7 +339,10 @@ async def get_stock(code: str):
     if not config.is_kr_code(code):
         raise HTTPException(400, "종목코드는 6자리 숫자입니다")
     realtime.see(code)  # 보고 있는 종목은 실시간 자리 1순위
-    return await market.quote_fast(code)
+    q = await market.quote_fast(code)
+    if q.get("name") in ("", code) and (n := views.kr_name(code)):
+        q["name"] = n
+    return q
 
 
 @app.get("/api/stock/{code}/candles", dependencies=api + [Depends(need_kis)])

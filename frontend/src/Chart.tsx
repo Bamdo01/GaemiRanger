@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Candle } from './data';
-import { fmt, shares } from './lib';
+import { fmt as fmtInt, shares } from './lib';
 
 // 캔들 차트 (SVG). 위는 가격과 이동평균, 아래는 거래량. 오른쪽에 가격 눈금.
 const PRICE_H = 340;
@@ -12,7 +12,8 @@ const MAS: [number, string][] = [
   [60, 'var(--ma60)'],
 ];
 
-export default function Chart({ candles, label }: { candles: Candle[]; label: string }) {
+/** fmt: 가격 글자 (미국 종목은 소수 둘째 자리) */
+export default function Chart({ candles, label, fmt = fmtInt }: { candles: Candle[]; label: string; fmt?: (n: number) => string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
   const [hover, setHover] = useState<number | null>(null);

@@ -6,6 +6,8 @@ import { HOLDINGS, STOCKS, groupCandles, priceLimits, sampleBook, sampleDaily, s
 import { useMarket } from './hooks';
 import { arrow, changeText, fmt, krSession, kstTime, shares, signed, tone, won } from './lib';
 import { usePortfolio } from './portfolio';
+import SearchBox from './Search';
+import UsStockPage from './UsStockPage';
 
 // 종목 페이지 (2026-11-18): UI 시안 A안 "프로 터미널" 배치. 관심종목 | 차트 | 호가 | 주문, 아래 종목 정보·내 보유.
 const LAST_KEY = 'gaemiranger.lastStock';
@@ -36,7 +38,13 @@ export function StockHome() {
 
 const SIDE_EVENT = 'gr-order-side';
 
+/** 국내 종목(6자리 코드)과 미국 종목(티커)은 다른 화면 */
 export default function StockPage() {
+  const { code = '' } = useParams();
+  return /^[0-9][0-9A-Z]{5}$/.test(code) ? <KrStockPage /> : <UsStockPage sym={code.toUpperCase()} />;
+}
+
+function KrStockPage() {
   const { code = '' } = useParams();
   const navigate = useNavigate();
   const { stocks, status, at, live } = useMarket();
@@ -110,8 +118,6 @@ function StockHead({ s, live, watched, onWatch, onGo, stocks }: { s: Stock; live
   const daily = useMemo(() => (live ? [] : sampleDaily(s)), [s, live]);
   const today = live ? { o: s.open ?? 0, h: s.high ?? 0, l: s.low ?? 0 } : daily[daily.length - 1];
   const tr = live ? { vol: [s.vol ?? 0], val: [s.val ?? 0] } : sampleTrade(s);
-  const [q, setQ] = useState('');
-  const hits = q.trim() ? stocks.filter((x) => x.name.includes(q.trim()) || x.code.startsWith(q.trim())).slice(0, 8) : [];
   const stats: [string, string, number][] = [
     ['전일', fmt(s.prev), 0],
     ['시가', fmt(today.o), today.o - s.prev],
@@ -125,7 +131,7 @@ function StockHead({ s, live, watched, onWatch, onGo, stocks }: { s: Stock; live
       <div className="st-title">
         <div className="st-name">
           <h1>{s.name}</h1>
-          <span className="num sec">{s.code} · 코스피 · {s.sector}</span>
+          <span className="num sec">{s.code} · {s.sector}</span>
           <button type="button" className={`star ${watched ? 'on' : ''}`} aria-pressed={watched} onClick={onWatch} title={watched ? '관심종목에서 빼기' : '관심종목에 추가'}>
             {watched ? '★ 관심' : '☆ 관심'}
           </button>
@@ -147,43 +153,7 @@ function StockHead({ s, live, watched, onWatch, onGo, stocks }: { s: Stock; live
         ))}
       </dl>
       <span className="grow" />
-      <div className="st-search">
-        <label htmlFor="st-q" className="sr">
-          종목 검색
-        </label>
-        <input
-          id="st-q"
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && hits[0]) {
-              onGo(hits[0].code);
-              setQ('');
-            }
-          }}
-          placeholder="종목명 또는 코드"
-          autoComplete="off"
-        />
-        {hits.length > 0 && (
-          <ul className="st-hits" role="listbox" aria-label="검색 결과">
-            {hits.map((h) => (
-              <li key={h.code}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onGo(h.code);
-                    setQ('');
-                  }}
-                >
-                  <span>{h.name}</span>
-                  <small className="num">{h.code}</small>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <SearchBox stocks={stocks} onGo={onGo} />
     </section>
   );
 }

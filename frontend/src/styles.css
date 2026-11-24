@@ -598,3 +598,11 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 .mbar-s.on b { color: var(--ink); }
 .st-sess { font-style: normal; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--seg); color: var(--sec); border: 1px solid var(--line); align-self: center; }
 .st-sess.on { color: var(--up); border-color: color-mix(in srgb, var(--up) 45%, transparent); }
+
+/* 미국 종목 화면 (2026-11-24) */
+.us-krw { margin: 2px 0 0; color: var(--sec); font-size: 13px; }
+.us-stock .st-chart { order: 0; min-height: 420px; }
+@media (max-width: 760px) {
+  .us-stock .kv { grid-template-columns: 1fr; }
+  .us-stock .kv > div { display: flex; justify-content: space-between; gap: 12px; }
+}
