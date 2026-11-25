@@ -13,6 +13,7 @@ import LedgerDrawer, { type Candidate, type Prefill } from './LedgerDrawer';
 import { LiveBadge, MovesCard, useFlash } from './Moves';
 import { checksOf, qtyText, usePortfolio, type Portfolio, type Row } from './portfolio';
 import { Seg, type Opt } from './Pickers';
+import PaperCard from './PaperCard';
 
 // 내 자산: 보기 버튼 없이 한 화면 (2026-11-18). 위 요약 줄, 왼쪽 히트맵, 오른쪽 점검·비중·AI 리뷰, 아래 표.
 // 히트맵은 업종으로 묶고, 칸에 보여 줄 값(색과 %)만 고른다. 묶음 고르기와 그룹 편집은 2026-11-18 뺐다.
@@ -200,6 +201,7 @@ export default function AssetsPage({ palette }: { palette: Palette }) {
           {colorBy === 'profit' ? <Legend palette={palette} scale={30} low="▼ 손실" high="이익 ▲" /> : <Legend palette={palette} />}
         </section>
         {has && <HoldTable port={port} onPick={goStock} onAdd={live ? addFor : undefined} flash={flash} grouped={acct === 'all'} />}
+        {live && acct === 'all' && <PaperCard />}
         </div>
 
         <div className="as-side">
@@ -433,6 +435,7 @@ function MobileAssets(p: {
         )}
       </section>
 
+      {live && p.acct === 'all' && <PaperCard />}
       {live && <AlertsCard max={3} />}
       {live && has && <MovesCard port={port} />}
       {has && <Checks port={port} kospiPct={p.kospiPct} />}

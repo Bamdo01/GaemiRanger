@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import activity, ai, alerts, auth, guard, config, harness, ledger, market, orders, prices, realtime, rules, settings, telegram, views
+from . import activity, ai, alerts, auth, evolve, guard, config, harness, ledger, market, orders, prices, realtime, rules, settings, telegram, views
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
@@ -544,6 +544,10 @@ def set_harness(aid: str, b: HarnessOn):
     if not a:
         raise HTTPException(404, "없는 하네스 계좌입니다")
     a["enabled"] = b.on
+    if b.on and a.get("halted"):
+        # 정지선(-30%)에 걸린 계좌를 다시 켜면 지금 값을 새 기준으로 (안 그러면 바로 다시 멈춘다)
+        a["start"] = round(a["cash"] + sum(p["qty"] * p["avgKrw"] for p in a["positions"].values()))
+        a["halted"] = ""
     harness._save()
     activity.log("harness", f"{a['name']} {'켬' if b.on else '끔'}")
     return {"ok": True}
@@ -562,6 +566,74 @@ async def run_harness(aid: str, b: HarnessRun):
         raise HTTPException(409, "이미 판단하는 중입니다")
     activity.log("harness", f"{a['name']} 지금 판단 ({b.market})")
     return await harness.decide(a, b.market, "직접 요청")
+
+
+class HarnessLimits(BaseModel):
+    limits: dict
+
+
+class HarnessMove(BaseModel):
+    src: str
+    dst: str
+    amount: float
+
+
+@app.get("/api/harness/summary", dependencies=api)
+async def harness_summary():
+    """내 자산 화면용 가상 계좌 요약"""
+    return {"accounts": await harness.summary()}
+
+
+@app.put("/api/harness/{aid}/limits", dependencies=api)
+def put_harness_limits(aid: str, b: HarnessLimits):
+    """사용자가 직접 한도 바꾸기 (AI 가 바꾸는 것과 같은 범위)"""
+    a = harness.account(aid)
+    if not a:
+        raise HTTPException(404, "없는 하네스 계좌입니다")
+    ch = harness.set_limits(a, b.limits, "사용자가 직접", "사용자")
+    harness._save()
+    if ch:
+        activity.log("harness", f"{a['name']} 한도 바꿈: " + ", ".join(ch))
+    return {"changes": ch}
+
+
+@app.post("/api/harness/transfer", dependencies=api)
+def harness_transfer(b: HarnessMove):
+    s, d = harness.account(b.src), harness.account(b.dst)
+    if not s or not d:
+        raise HTTPException(404, "없는 하네스 계좌입니다")
+    r = evolve.transfer(s, d, b.amount, "사용자", "사용자가 직접")
+    harness._save()
+    if r.startswith("거절"):
+        raise HTTPException(400, r)
+    activity.log("harness", r)
+    return {"result": r}
+
+
+@app.post("/api/harness/hq/run", dependencies=api + [Depends(need_kis)])
+async def harness_hq_run():
+    if not ai.configured():
+        raise HTTPException(400, "AI 가 연결돼 있지 않습니다")
+    if harness.state["running"]:
+        raise HTTPException(409, "이미 판단하는 중입니다")
+    activity.log("harness", "운용 본부 지금 실행")
+    return await evolve.hq_run("직접 요청")
+
+
+@app.post("/api/harness/{aid}/review", dependencies=api + [Depends(need_kis)])
+async def harness_review(aid: str):
+    a = harness.account(aid)
+    if not a:
+        raise HTTPException(404, "없는 하네스 계좌입니다")
+    if harness.state["running"]:
+        raise HTTPException(409, "이미 판단하는 중입니다")
+    harness.state["running"] = f"{aid}:review"
+    try:
+        names = await evolve.review(a, "직접")
+    finally:
+        harness.state["running"] = ""
+    activity.log("harness", f"{a['name']} 지금 복기")
+    return {"reviewed": names}
 
 
 # ---------- 자산 지킴이 ----------

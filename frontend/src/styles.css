@@ -660,3 +660,41 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
 .hn-risk .hn-ava { background: #8a3a44; }
 .hn-stance { margin-left: 6px; padding: 1px 6px; border-radius: 99px; background: var(--seg); color: var(--sec); }
 .hn-picks { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+/* 2026-11-25 가상 계좌(내 자산), 팀원 화면, 한도, 운용 본부 */
+.paper-card { margin-top: 12px; }
+.paper-sum { margin: 0 0 8px; font-size: 13.5px; }
+.paper-list, .paper-more ul, .ag-list { list-style: none; margin: 0; padding: 0; }
+.paper-list > li { border-top: 1px solid var(--line); }
+.paper-row, .ag-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 2px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.paper-row:hover, .ag-row:hover { background: rgba(255, 255, 255, 0.03); }
+.paper-tag { flex: 0 0 auto; padding: 2px 7px; border-radius: 6px; background: var(--seg); color: var(--sec); font-size: 11.5px; font-weight: 700; }
+.paper-main, .ag-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.paper-main b, .ag-main b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paper-right { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 13px; }
+.paper-more { padding: 0 2px 12px 46px; display: flex; flex-direction: column; gap: 8px; }
+.paper-more li { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; font-size: 13px; padding: 3px 0; }
+.paper-more .btn { align-self: flex-start; }
+.ag-list > li + li { border-top: 1px solid var(--line); }
+.ag-score { flex: 0 0 auto; font-weight: 700; font-size: 14px; }
+.ag-view .card-head { gap: 10px; }
+.ag-sum { margin: 4px 0 12px; }
+.ag-h { margin: 6px 0 6px; font-size: 14px; }
+.ag-lessons { margin: 0 0 12px; padding-left: 20px; line-height: 1.6; font-size: 13.5px; }
+.ag-lessons li + li { margin-top: 4px; }
+.ag-tabs { margin: 4px 0 8px; align-self: flex-start; width: fit-content; max-width: 100%; overflow-x: auto; }
+.lim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 14px; margin: 0 0 10px; }
+.lim-grid > div { display: flex; flex-direction: column; gap: 2px; }
+.lim-grid dt { color: var(--sec); font-size: 12px; }
+.lim-grid dd { margin: 0; font-weight: 700; font-size: 14px; }
+.lim-grid .in, .lim-grid .dd { width: 100%; min-width: 0; }
+.hn-lim { font-size: 13px; color: var(--sec); }
+.hq-real { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--seg); font-size: 13px; }
+.hq-real ul { margin: 4px 0 0; padding-left: 18px; line-height: 1.6; }
+.hq-move { flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.hq-move .in { width: 130px; }
+@media (max-width: 640px) {
+  .paper-more { padding-left: 2px; }
+  .paper-more li { grid-template-columns: 1fr auto auto; }
+  .paper-more li .sub { display: none; }
+  .hq-move .dd { flex: 1 1 40%; min-width: 0; }
+}

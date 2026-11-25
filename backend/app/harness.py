@@ -8,6 +8,10 @@
 - 보고: 국내 장 마감 뒤(15:45)와 미국 장 마감 뒤(06:15) 텔레그램
 
 진짜 계좌 주문(orders.py)은 부르지 않는다. 진짜 계좌로 넓히는 것은 가상 성적을 보고 따로 정한다.
+
+2026-11-25 자율: 한도·투자 범위·판단 주기는 계좌마다 AI 가 스스로 정한다 (HARD 범위 안).
+코드에 남긴 것은 두 가지: 계좌가 시작 대비 -30% 면 정지, 현금이 마이너스(빚)가 되는 매수 금지.
+복기·교훈·운용 본부(계좌 사이 돈 나누기, 팀 교체)는 evolve.py.
 """
 
 import asyncio
@@ -46,6 +50,41 @@ KR_ETF = {
     "153130": "KODEX 단기채권",
 }
 US_ETF = {"SPY", "VOO", "IVV", "QQQ", "VTI", "DIA", "IWM", "SCHD", "TLT", "IEF", "SHY", "GLD", "SMH", "SOXX", "VEA", "VWO", "BND"}
+# 넓은 범위(wide)에서만: 레버리지·인버스
+KR_LEV = {"122630": "KODEX 레버리지", "252670": "KODEX 200선물인버스2X", "114800": "KODEX 인버스", "233740": "KODEX 코스닥150레버리지", "251340": "KODEX 코스닥150선물인버스"}
+US_LEV = {"TQQQ", "SQQQ", "SOXL", "SOXS", "UPRO", "SPXU", "TMF", "TNA"}
+# AI 가 스스로 정하는 한도의 바깥 틀 (이 밖으로는 못 감)
+HARD = {"maxPosPct": (5, 100), "maxTradePct": (2, 100), "minCashPct": (0, 50), "maxTradesDay": (1, 30), "stopPct": (-50, -3), "decideEveryMin": (30, 240), "maxOrdersPerDecision": (1, 6)}
+HALT_PCT = -30  # 계좌 전체가 시작 대비 이만큼이면 정지 (코드가 강제)
+
+
+def lim(a: dict) -> dict:
+    return {**LIMITS, "universe": "core", **(a.get("limits") or {})}
+
+
+def set_limits(a: dict, new: dict, why: str, by: str) -> list[str]:
+    """한도 바꾸기 (AI 또는 사용자). HARD 범위로 자른다. 바뀐 것 목록을 돌려준다"""
+    cur = lim(a)
+    out, changed = {}, []
+    for k, (lo, hi) in HARD.items():
+        if k in (new or {}):
+            try:
+                v = int(round(float(new[k])))
+            except (TypeError, ValueError):
+                continue
+            v = max(lo, min(hi, v))
+            if v != cur[k]:
+                out[k] = v
+                changed.append(f"{k} {cur[k]}→{v}")
+    u = (new or {}).get("universe")
+    if u in ("core", "wide") and u != cur["universe"]:
+        out["universe"] = u
+        changed.append(f"universe {cur['universe']}→{u}")
+    if changed:
+        a["limits"] = {**(a.get("limits") or {}), **out}
+        a.setdefault("limitLog", []).append({"at": _iso(), "by": by, "changes": changed, "why": str(why or "")[:300]})
+        a["limitLog"] = a["limitLog"][-60:]
+    return changed
 
 data: dict = {}
 _lock = asyncio.Lock()
@@ -161,7 +200,7 @@ async def price_of(asset: str, code: str) -> tuple[float, str]:
         q = market.quotes.get(code)
         if not q or time.time() - q.get("at", 0) > 180:
             q = await market.fetch_quote(code)
-        return float(q.get("price") or 0), KR_ETF.get(code) or q.get("name") or code
+        return float(q.get("price") or 0), KR_ETF.get(code) or KR_LEV.get(code) or q.get("name") or views.kr_name(code) or code
     p = views._us_px.get(code)
     if p and time.time() - p.get("at", 0) < 180:
         return float(p["price"]), p.get("name") or code
@@ -169,7 +208,10 @@ async def price_of(asset: str, code: str) -> tuple[float, str]:
     return float(d["price"]), d.get("name") or code
 
 
-def in_universe(asset: str, code: str) -> bool:
+def in_universe(asset: str, code: str, wide: bool = False) -> bool:
+    if wide:
+        # 넓은 범위: 국내 상장 종목·ETF 아무거나, 미국 티커 아무거나 (시세가 안 오면 체결에서 거절)
+        return bool(re.fullmatch(r"[0-9][0-9A-Z]{5}", code)) if asset == "kr" else bool(re.fullmatch(r"[A-Z][A-Z./]{0,6}", code))
     if asset == "kr":
         return code in KR_ETF or any(m["code"] == code for m in members.get("kospi200"))
     return code in US_ETF or any(m["code"] == code for v in ("sp500", "ndx", "dji") for m in members.get(v))
@@ -223,17 +265,18 @@ async def execute(a: dict, o: dict, by: str) -> str:
         return "거절: 주문 형식이 잘못됨"
     if settings.get("emergency"):
         return "거절: 비상 정지 중"
-    if not a.get("enabled") and by != "stop":
+    if not a.get("enabled") and by not in ("stop", "hq"):
         return "거절: 하네스가 꺼져 있음"
+    L = lim(a)
     if not session_open(asset):
         return "거절: 정규장 시간이 아님"
     t = _today(a)
-    if t["n"] >= LIMITS["maxTradesDay"] and by != "stop":
-        return f"거절: 오늘 매매 {LIMITS['maxTradesDay']}번을 다 씀"
+    if t["n"] >= L["maxTradesDay"] and by != "stop":
+        return f"거절: 오늘 매매 {L['maxTradesDay']}번을 다 씀"
     key = f"{asset}:{code}"
     pos = a["positions"].get(key)
-    if side == "buy" and not in_universe(asset, code):
-        return "거절: 투자 범위 밖 (코스피200·S&P500·나스닥100·다우30·지정 ETF만)"
+    if side == "buy" and not in_universe(asset, code, L["universe"] == "wide"):
+        return "거절: 투자 범위 밖 (코스피200·S&P500·나스닥100·다우30·지정 ETF만. 넓은 범위로 바꾸면 풀림)"
     if side == "buy" and code in ((a.get("debate") or {}).get(asset) or {}).get("block", []):
         return "거절: 리스크 관리자가 반대한 종목 (다음 토론까지)"
     try:
@@ -250,13 +293,14 @@ async def execute(a: dict, o: dict, by: str) -> str:
 
     if side == "buy":
         amount = float(o.get("amountKrw") or 0)
-        amount = min(amount, total * LIMITS["maxTradePct"] / 100)
+        amount = min(amount, total * L["maxTradePct"] / 100)
         held = (pos["qty"] * krw) if pos else 0
-        amount = min(amount, total * LIMITS["maxPosPct"] / 100 - held)
-        amount = min(amount, a["cash"] - total * LIMITS["minCashPct"] / 100)
+        amount = min(amount, total * L["maxPosPct"] / 100 - held)
+        amount = min(amount, a["cash"] - total * L["minCashPct"] / 100)
+        amount = min(amount, a["cash"] / (1 + fee_rate))  # 빚 금지 (코드가 강제)
         qty = math.floor(amount / (krw * (1 + fee_rate))) if amount > 0 else 0
         if qty < 1:
-            return f"거절: 한도 안에서 살 수 있는 수량이 없음 (1주 {krw:,.0f}원, 한 종목 {LIMITS['maxPosPct']}%·한 번 {LIMITS['maxTradePct']}%·현금 {LIMITS['minCashPct']}% 남기기)"
+            return f"거절: 한도 안에서 살 수 있는 수량이 없음 (1주 {krw:,.0f}원, 한 종목 {L['maxPosPct']}%·한 번 {L['maxTradePct']}%·현금 {L['minCashPct']}% 남기기)"
         cost = qty * krw
         fee = cost * fee_rate
         a["cash"] -= cost + fee
@@ -305,8 +349,9 @@ async def check_stops(a: dict) -> list[str]:
             price, _ = await price_of(p["asset"], p["code"])
         except KISError:
             continue
-        if price and p["avg"] and (price / p["avg"] - 1) * 100 <= LIMITS["stopPct"]:
-            r = await execute(a, {"side": "sell", "market": p["asset"], "code": p["code"], "qty": "all", "reason": f"손절선 {LIMITS['stopPct']}% 도달 (평균 {p['avg']:,.2f} → {price:,.2f})"}, "stop")
+        stop = lim(a)["stopPct"]
+        if price and p["avg"] and (price / p["avg"] - 1) * 100 <= stop:
+            r = await execute(a, {"side": "sell", "market": p["asset"], "code": p["code"], "qty": "all", "reason": f"손절선 {stop}% 도달 (평균 {p['avg']:,.2f} → {price:,.2f})"}, "stop")
             out.append(r)
             if r.startswith("체결") and telegram.configured():
                 try:
@@ -324,12 +369,35 @@ SYSTEM = """너는 '개미레인저' 앱의 가상 투자 하네스를 맡은 �
 - 분산한다. 국내와 미국, 개별 종목과 지수 ETF 를 섞는다. 현금도 선택지다.
 - 근거는 아래에 주는 데이터(가격, 오늘 등락률, 알림·뉴스 제목, 보유 현황)만 쓴다. 데이터에 없는 뉴스·실적을 지어내지 않는다.
 - 자주 사고팔지 않는다. 바꿀 이유가 없으면 주문 없이 지켜본다.
-- 코드가 강제하는 한도: 한 종목 최대 15%, 한 번 매수 최대 총평가의 10%, 매수 뒤 현금 5% 이상, 하루 매매 10번, 평균단가 대비 -10%면 자동 손절. 이 한도를 넘는 주문은 잘린다.
 - 이번 판단에서 주문할 수 있는 시장은 아래 [이번 시장] 하나뿐이다.
 
 답은 JSON 하나만, 다른 글 없이:
 {"view": "지금 시장과 계좌에 대한 판단 한두 문장", "orders": [{"side": "buy", "market": "kr 또는 us", "code": "종목코드 또는 티커", "amountKrw": 1000000, "reason": "이유 한 문장"}, {"side": "sell", "market": "us", "code": "AAPL", "qty": "all 또는 주식 수", "reason": "이유 한 문장"}]}
-주문은 최대 3개. 할 것이 없으면 "orders": []."""
+할 것이 없으면 "orders": [].
+한도를 바꾸고 싶으면 같은 JSON 에 "limits": {"maxPosPct": 25, "universe": "wide", ...} 와 "limitsWhy": "이유" 를 더한다 (바꿀 것만)."""
+
+
+def limits_text(a: dict) -> str:
+    L = lim(a)
+    lo = {k: f"{v[0]}~{v[1]}" for k, v in HARD.items()}
+    return (
+        "[한도: 네가 스스로 정한다]\n"
+        f"지금 값: 한 종목 최대 {L['maxPosPct']}% (maxPosPct), 한 번 매수 최대 총평가의 {L['maxTradePct']}% (maxTradePct), 매수 뒤 현금 {L['minCashPct']}% 이상 (minCashPct), "
+        f"하루 매매 {L['maxTradesDay']}번 (maxTradesDay), 평균단가 대비 {L['stopPct']}% 면 자동 손절 (stopPct), {L['decideEveryMin']}분마다 판단 (decideEveryMin), 한 번에 주문 {L['maxOrdersPerDecision']}개 (maxOrdersPerDecision), "
+        f"투자 범위 {'넓음: 국내 상장 종목·ETF 와 미국 티커 아무거나, 레버리지·인버스 포함' if L['universe'] == 'wide' else '좁음: 코스피200·S&P500·나스닥100·다우30·지정 ETF'} (universe: core 또는 wide).\n"
+        f"바꿀 수 있는 범위: {', '.join(f'{k} {v}' for k, v in lo.items())}. 성적과 교훈을 보고 수익을 키우는 쪽으로 스스로 조정하라.\n"
+        f"바꿀 수 없는 것(코드가 강제): 계좌가 시작 대비 {HALT_PCT}% 면 정지, 현금보다 많이 사는 매수(빚) 금지, 공개된 데이터만 근거."
+    )
+
+
+def lessons_text(a: dict, who: str) -> str:
+    ag = (a.get("agents") or {}).get(who) or {}
+    ls = [x["text"] for x in ag.get("lessons") or []]
+    st = ag.get("stats") or {}
+    if not ls and not st.get("n"):
+        return ""
+    head = f"[네 지난 성적] 채점된 판단 {st.get('n', 0)}번, 맞힌 비율 {st.get('hit', 0):.0f}%, 평균 {st.get('avg', 0):+.2f}%" if st.get("n") else ""
+    return "\n".join(x for x in [head, "[네가 지난 복기에서 스스로 적은 교훈 (지켜라)]" if ls else "", *[f"- {x}" for x in ls]] if x)
 
 
 def _fmt_rows(rows: list[dict], usd: bool) -> list[str]:
@@ -346,7 +414,7 @@ async def _context(a: dict, mkt: str) -> str:
     lines = [
         f"[지금] {_now():%Y-%m-%d %H:%M} 한국 시간, 국내 {market.kr_session()['label']}, 미국 {market.us_session()['label']}",
         f"[이번 시장] {'국내 (코스피200 종목·국내 지정 ETF)' if mkt == 'kr' else '미국 (S&P500·나스닥100·다우30 종목·미국 지정 ETF)'}",
-        f"[계좌] 총평가 {val['total']:,.0f}원 (시작 {a['start']:,.0f}원 대비 {val['pnlPct']:+.2f}%), 현금 {a['cash']:,.0f}원 ({a['cash'] / val['total'] * 100:.1f}%), 환율 {val['fx']:,.1f}원/달러, 오늘 매매 {_today(a)['n']}/{LIMITS['maxTradesDay']}번",
+        f"[계좌] 총평가 {val['total']:,.0f}원 (시작 {a['start']:,.0f}원 대비 {val['pnlPct']:+.2f}%), 현금 {a['cash']:,.0f}원 ({a['cash'] / val['total'] * 100:.1f}%), 환율 {val['fx']:,.1f}원/달러, 오늘 매매 {_today(a)['n']}/{lim(a)['maxTradesDay']}번",
     ]
     if val["rows"]:
         lines.append("[보유]")
@@ -370,8 +438,26 @@ async def _context(a: dict, mkt: str) -> str:
         if etf:
             lines.append("[국내 지정 ETF]")
             lines += _fmt_rows(etf, False)
+        if lim(a)["universe"] == "wide":
+            try:
+                v30 = (await views.get_view("value30"))["stocks"]
+                lines.append("[국내 거래대금 상위 30 (넓은 범위)]")
+                lines += _fmt_rows(v30, False)
+            except Exception:  # noqa: BLE001
+                pass
+            lev = []
+            for c, n in KR_LEV.items():
+                try:
+                    q = market.quotes.get(c) or await market.fetch_quote(c)
+                except KISError:
+                    continue
+                if q.get("price"):
+                    lev.append({**q, "code": c, "name": n})
+            if lev:
+                lines.append("[국내 레버리지·인버스 ETF]")
+                lines += _fmt_rows(lev, False)
     else:
-        want = {m["code"] for v in ("dji", "ndx") for m in members.get(v)} | US_ETF
+        want = {m["code"] for v in ("dji", "ndx") for m in members.get(v)} | US_ETF | (US_LEV if lim(a)["universe"] == "wide" else set())
         if time.time() - views._us_px_at[0] > 300:
             try:
                 await views._us_rank_pages(want)
@@ -380,7 +466,7 @@ async def _context(a: dict, mkt: str) -> str:
         rows = [{"code": s, **p} for s, p in views._us_px.items() if s in want and p.get("price")]
         rows.sort(key=lambda r: -(r.get("cap") or 0))
         lines.append("[미국 주요 종목·ETF (티커 이름 가격 오늘)]")
-        lines += _fmt_rows(rows[:70], True)
+        lines += _fmt_rows(rows[:80], True)
     try:
         from . import alerts
 
@@ -413,10 +499,16 @@ async def decide(a: dict, mkt: str, why: str = "정기") -> dict:
             if a.get("strategy") == "team":
                 d = await _team(a, mkt, ctx, rec)
             else:
-                text = await ai.ask_system(SYSTEM, ctx + "\n\n위 데이터로 이번 시장의 판단과 주문안을 JSON 으로.")
+                text = await ai.ask_system(solo_system(a), ctx + "\n\n위 데이터로 이번 시장의 판단과 주문안을 JSON 으로.")
                 d = _parse(text)
             rec["view"] = str(d.get("view") or "")[:400]
-            for o in d["orders"][: LIMITS["maxOrdersPerDecision"]]:
+            if isinstance(d.get("limits"), dict):
+                ch = set_limits(a, d["limits"], d.get("limitsWhy") or "", rec.get("manager") or "AI")
+                if ch:
+                    rec["limits"] = ch
+                    rec["limitsWhy"] = str(d.get("limitsWhy") or "")[:300]
+            who = rec.get("managerId") or "solo"
+            for o in d["orders"][: lim(a)["maxOrdersPerDecision"]]:
                 if not isinstance(o, dict):
                     continue
                 if o.get("market") != mkt:
@@ -424,7 +516,11 @@ async def decide(a: dict, mkt: str, why: str = "정기") -> dict:
                     rec["results"].append("거절: 이번 판단의 시장이 아님")
                     continue
                 rec["orders"].append(o)
-                rec["results"].append(await execute(a, o, "ai"))
+                r = await execute(a, o, "ai")
+                rec["results"].append(r)
+                if r.startswith("체결"):
+                    tr = a["trades"][-1]
+                    add_call(a, who, mkt, tr["side"], tr["code"], tr["price"], tr["name"])
         except Exception as e:  # noqa: BLE001 - 실패도 기록으로 남긴다
             rec["error"] = f"{e.__class__.__name__}: {e}"[:300]
             state["lastError"] = rec["error"]
@@ -435,6 +531,38 @@ async def decide(a: dict, mkt: str, why: str = "정기") -> dict:
         a["decisions"] = a["decisions"][-300:]
         _save()
         return rec
+
+
+# ---------- 채점용 판단 기록 (evolve.py 가 나중에 채점) ----------
+def add_call(a: dict, who: str, mkt: str, kind: str, code: str, price: float, name: str = "", stance: str = "") -> None:
+    a.setdefault("calls", []).append({"at": _iso(), "who": who, "sig": _sig_of(a, who), "mkt": mkt, "kind": kind, "code": code, "name": name, "price": price, "stance": stance, "ret": None, "final": False})
+    a["calls"] = a["calls"][-800:]
+
+
+def _sig_of(a: dict, who: str) -> str:
+    m = next((x for x in a.get("team") or [] if x["id"] == who), None)
+    return f"{m['role']}/{m['persona']}/{m['temper']}" if m else "solo"
+
+
+INDEX_OF = {"kr": "kospi", "us": "sp500"}
+
+
+async def _record_debate(a: dict, mkt: str, talk: list[dict]) -> None:
+    for s in talk:
+        if s["role"] == "strategist" and s.get("stance"):
+            ix = market.indices.get(INDEX_OF[mkt]) or {}
+            if ix.get("value"):
+                add_call(a, s["id"], mkt, "stance", INDEX_OF[mkt], ix["value"], ix.get("name", ""), str(s["stance"]))
+        items = [(p.get("side"), str(p.get("code") or "").upper()) for p in s.get("picks") or []] + [("block", c) for c in s.get("block") or []]
+        for kind, code in items:
+            if kind not in ("buy", "sell", "block") or not code:
+                continue
+            try:
+                price, name = await price_of(mkt, code)
+            except Exception:  # noqa: BLE001 - 시세를 못 받으면 채점에서 뺀다
+                continue
+            if price > 0:
+                add_call(a, s["id"], mkt, kind, code, price, name)
 
 
 # ---------- 팀 토론 ----------
@@ -453,12 +581,20 @@ def _agent_system(a: dict, m: dict, mkt: str) -> str:
         f"너는 '{a['name']}' 가상 투자 계좌(진짜 돈이 아님, 시작 1천만 원)를 굴리는 팀의 {role}다. {rdesc}\n"
         f"투자관: {pname} — {pdesc}\n성향: {tname} — {tdesc}\n"
         "근거는 주어진 데이터(가격, 오늘 등락률, 알림·뉴스 제목, 보유 현황, 팀원 의견)만 쓴다. 데이터에 없는 뉴스·실적은 지어내지 않는다. 한국어로 짧게.\n"
-        f"이번에 다루는 시장은 {'국내' if mkt == 'kr' else '미국'} 하나뿐이다. 코드가 강제하는 한도: 한 종목 15%, 한 번 매수 10%, 현금 5% 이상, 하루 매매 10번, -10% 자동 손절."
+        f"이번에 다루는 시장은 {'국내' if mkt == 'kr' else '미국'} 하나뿐이다. 목표는 시장 평균(코스피·S&P500)보다 더 버는 것이다.\n" + limits_text(a)
     )
+    ls = lessons_text(a, m["id"])
+    if ls:
+        head += "\n\n" + ls
     if m["role"] == "manager":
-        # 매니저는 단독 AI 와 같은 답 형식 (주문안 JSON)
+        # 매니저는 단독 AI 와 같은 답 형식 (주문안 JSON, 한도 바꾸기 포함)
         return head + "\n\n" + SYSTEM[SYSTEM.index("답은 JSON 하나만") :]
     return head
+
+
+def solo_system(a: dict) -> str:
+    ls = lessons_text(a, "solo")
+    return SYSTEM + "\n\n" + limits_text(a) + ("\n\n" + ls if ls else "")
 
 
 def _say(m: dict, d: dict) -> dict:
@@ -485,6 +621,7 @@ async def _team(a: dict, mkt: str, ctx: str, rec: dict) -> dict:
         a["debate"][mkt] = {"day": day, "at": _iso(), "talk": talk, "block": block}
         rec["debate"] = talk
         rec["block"] = block
+        await _record_debate(a, mkt, talk)
     else:
         rec["debateAt"] = last.get("at")
     deb = a["debate"][mkt]
@@ -493,6 +630,7 @@ async def _team(a: dict, mkt: str, ctx: str, rec: dict) -> dict:
     prompt = ctx + f"\n\n[오늘 팀 토론 ({deb['at'][11:16]})]\n{said}\n[리스크 관리자가 반대한 종목 (매수 금지)] {', '.join(deb['block']) or '없음'}\n\n" + ("위 토론을 모아 최종 판단과 주문안을 JSON 으로." if full else "토론 뒤 가격이 바뀌었을 수 있다. 지금 데이터로 다시 보고 최종 판단과 주문안을 JSON 으로 (바꿀 이유가 없으면 주문 없음).")
     d = _parse(await ai.ask_system(_agent_system(a, mgr, mkt), prompt))
     rec["manager"] = agent_name(mgr)
+    rec["managerId"] = mgr["id"]
     return d
 
 
@@ -534,9 +672,12 @@ async def run_forever() -> None:
         try:
             if config.kis_configured():
                 await members.refresh()
+                from . import evolve
+
                 for a in load()["accounts"]:
                     await check_stops(a)
                     await _snapshot(a)
+                    await _check_halt(a)
                     if a.get("enabled") and ai.configured() and not settings.get("emergency"):
                         for mkt, sess in (("kr", market.kr_session()), ("us", market.us_session())):
                             if sess["code"] != "regular":
@@ -546,7 +687,7 @@ async def run_forever() -> None:
                             open_min = (n.hour * 60 + n.minute) - (540 if mkt == "kr" else 570)
                             if open_min < 30:
                                 continue
-                            if time.time() - a["lastDecide"].get(mkt, 0) >= LIMITS["decideEveryMin"] * 60 - 30:
+                            if time.time() - a["lastDecide"].get(mkt, 0) >= lim(a)["decideEveryMin"] * 60 - 30:
                                 await decide(a, mkt)
                     # 보고: 국내 마감 뒤 15:45, 미국 마감 뒤 06:15 (평일)
                     n = _now()
@@ -558,21 +699,40 @@ async def run_forever() -> None:
                                 _save()
                                 if telegram.configured():
                                     await telegram.send(await report(a, title), silent=True)
+                                # 마감 보고 뒤 복기: 채점하고 팀원마다 교훈을 고쳐 쓴다
+                                await evolve.review(a, tag)
                     _save()
+                await evolve.hq_tick()
         except Exception as e:  # noqa: BLE001 - 하네스가 죽지 않게
             state["lastError"] = f"{_now():%H:%M:%S} {e.__class__.__name__}: {e}"[:300]
         await asyncio.sleep(60)
 
 
+async def _check_halt(a: dict) -> None:
+    if not a.get("enabled"):
+        return
+    val = await valuation(a)
+    if val["pnlPct"] <= HALT_PCT:
+        a["enabled"] = False
+        a["halted"] = f"{_now():%m/%d %H:%M} 시작 대비 {val['pnlPct']:.1f}% (정지선 {HALT_PCT}%)"
+        _save()
+        if telegram.configured():
+            try:
+                await telegram.send(f"[가상 하네스] {a['name']} 정지: {a['halted']}")
+            except Exception:  # noqa: BLE001
+                pass
+
+
 # ---------- 계좌 만들기 · 팀 바꾸기 ----------
-def create(name: str, strategy: str, preset_key: str = "balanced") -> dict:
+def create(name: str, strategy: str, preset_key: str = "balanced", team: list | None = None, start: float = START) -> dict:
     load()
     if len(data["accounts"]) >= 6:
         raise ValueError("가상 계좌는 6개까지입니다")
     name = (name or "").strip()[:20] or ("가상 팀 (" + PRESET_NAMES.get(preset_key, "") + ")" if strategy == "team" else "가상 하네스 (AI)")
     if strategy not in ("ai", "team") or (strategy == "team" and preset_key not in PRESETS):
         raise ValueError("전략이 잘못됨")
-    a = _new_account(_next_id(), name, strategy, preset(preset_key) if strategy == "team" else [])
+    a = _new_account(_next_id(), name, strategy, (team or preset(preset_key)) if strategy == "team" else [])
+    a["start"] = a["cash"] = round(start)
     data["accounts"].append(a)
     _save()
     return a
@@ -586,6 +746,36 @@ def set_team(a: dict, team: list[dict]) -> None:
 
 
 # ---------- 화면 ----------
+def agents_view(a: dict) -> list[dict]:
+    """팀원(또는 단독 AI) 한 명씩: 소개, 성적, 교훈, 판단 기록"""
+    people = [{**m, "name": agent_name(m)} for m in a.get("team") or []] if a.get("strategy") == "team" else [{"id": "solo", "role": "manager", "persona": "neutral", "temper": "mid", "name": "AI 단독 매니저"}]
+    out = []
+    for m in people:
+        sig = _sig_of(a, m["id"])
+        ag = (a.get("agents") or {}).get(m["id"]) or {}
+        if ag.get("sig") != sig:
+            ag = {}  # 바뀐 팀원은 성적·교훈을 새로 시작
+        calls = [c for c in a.get("calls") or [] if c["who"] == m["id"] and c.get("sig") == sig][-80:][::-1]
+        says = []
+        for d in a["decisions"][::-1]:
+            for s in d.get("debate") or []:
+                if s["id"] == m["id"] and s.get("persona") == m["persona"] and s.get("role") == m["role"]:
+                    says.append({"at": d["at"], "market": d["market"], "text": s["text"], "stance": s.get("stance"), "picks": s.get("picks") or [], "block": s.get("block") or []})
+            if m["role"] == "manager" and (d.get("managerId") == m["id"] or m["id"] == "solo") and d.get("view"):
+                says.append({"at": d["at"], "market": d["market"], "text": d["view"], "orders": [f"{'매수' if o.get('side') == 'buy' else '매도'} {o.get('code')}" for o in d["orders"]], "results": d["results"]})
+            if len(says) >= 40:
+                break
+        out.append({**m, "lessons": ag.get("lessons") or [], "log": (ag.get("log") or [])[-30:][::-1], "stats": ag.get("stats") or {}, "reviewedAt": ag.get("reviewedAt", ""), "calls": calls, "says": says})
+    return out
+
+
+async def summary() -> list[dict]:
+    """내 자산 화면용: 가상 계좌 요약"""
+    out = []
+    for a in load()["accounts"]:
+        val = await valuation(a)
+        out.append({"id": a["id"], "name": a["name"], "strategy": a["strategy"], "teamN": len(a.get("team") or []), "enabled": a["enabled"], "halted": a.get("halted", ""), "start": a["start"], "total": val["total"], "cash": val["cash"], "pnl": val["pnl"], "pnlPct": val["pnlPct"], "rows": [{k: r[k] for k in ("asset", "code", "name", "qty", "price", "amt", "pnl", "pnlPct", "weight")} for r in val["rows"]]})
+    return out
 async def view() -> dict:
     out = []
     for a in load()["accounts"]:
@@ -607,6 +797,10 @@ async def view() -> dict:
                 "decisions": a["decisions"][-30:][::-1],
                 "equity": a["equity"][-120:],
                 "lastDecide": a["lastDecide"],
+                "limits": lim(a),
+                "limitLog": (a.get("limitLog") or [])[-20:][::-1],
+                "halted": a.get("halted", ""),
+                "agents": agents_view(a),
             }
         )
     catalog = {
@@ -615,4 +809,6 @@ async def view() -> dict:
         "tempers": {k: {"name": v[0], "desc": v[1]} for k, v in TEMPERS.items()},
         "presets": {k: {"name": PRESET_NAMES[k], "team": preset(k)} for k in PRESETS},
     }
-    return {"accounts": out, "catalog": catalog, "limits": LIMITS, "sessions": market.sessions(), "ai": ai.configured(), "running": state["running"], "lastError": state["lastError"], "fees": {"kr": FEE_KR, "krTax": TAX_KR, "us": FEE_US}}
+    from . import evolve
+
+    return {"accounts": out, "catalog": catalog, "limits": LIMITS, "hard": HARD, "haltPct": HALT_PCT, "hq": evolve.hq_view(), "sessions": market.sessions(), "ai": ai.configured(), "running": state["running"], "lastError": state["lastError"], "fees": {"kr": FEE_KR, "krTax": TAX_KR, "us": FEE_US}}

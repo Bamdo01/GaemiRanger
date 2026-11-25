@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { post, put, usePoll, useServer } from './api';
 import { arrow, changeText, fmt, fmt2, signed, tone } from './lib';
+import { AgentsCard, AgentView, HqCard, LimitsCard, type Agent, type Hq, type LimitsT } from './HarnessParts';
 
 // 투자 하네스 (2026-11-25): 계좌 하나를 맡아 굴리는 자동매매 틀. 지금은 가상 계좌(1천만 원)만.
 // AI 가 1시간마다 판단하고, 한도는 서버 코드가 강제한다. 진짜 계좌 주문은 하지 않는다.
 type Pos = { key: string; asset: 'kr' | 'us'; code: string; name: string; qty: number; avg: number; price: number; amt: number; pnl: number; pnlPct: number; weight: number };
 type Trade = { at: string; side: 'buy' | 'sell'; market: 'kr' | 'us'; code: string; name: string; qty: number; price: number; amount: number; fee: number; tax: number; by: string; reason: string; realized?: number };
 type Say = { id: string; role: string; persona: string; temper: string; name: string; text: string; stance?: string; picks: { side?: string; code?: string; reason?: string }[]; block: string[] };
-type Decision = { at: string; market: 'kr' | 'us'; why: string; view: string; orders: { side?: string; code?: string; amountKrw?: number; qty?: number | string; reason?: string }[]; results: string[]; error: string; debate?: Say[]; block?: string[]; debateAt?: string; manager?: string };
+type Decision = { at: string; market: 'kr' | 'us'; why: string; view: string; orders: { side?: string; code?: string; amountKrw?: number; qty?: number | string; reason?: string }[]; results: string[]; error: string; debate?: Say[]; block?: string[]; debateAt?: string; manager?: string; limits?: string[]; limitsWhy?: string };
 type Member = { id: string; role: string; persona: string; temper: string; name?: string };
 type Item = { name: string; desc: string };
 type Catalog = { roles: Record<string, Item>; personas: Record<string, Item>; tempers: Record<string, Item>; presets: Record<string, { name: string; team: Member[] }> };
@@ -27,9 +28,13 @@ type Acct = {
   decisions: Decision[];
   equity: { day: string; value: number }[];
   lastDecide: Record<string, number>;
+  limits: LimitsT;
+  limitLog: { at: string; by: string; changes: string[]; why: string }[];
+  halted: string;
+  agents: Agent[];
 };
 type Limits = { maxPosPct: number; maxTradePct: number; maxTradesDay: number; minCashPct: number; stopPct: number; maxOrdersPerDecision: number; decideEveryMin: number };
-type View = { accounts: Acct[]; catalog: Catalog; limits: Limits; sessions: { kr: { code: string; label: string }; us: { code: string; label: string } }; ai: boolean; running: string; lastError: string; fees: { kr: number; krTax: number; us: number } };
+type View = { accounts: Acct[]; catalog: Catalog; limits: Limits; hard: Record<string, [number, number]>; haltPct: number; hq: Hq; sessions: { kr: { code: string; label: string }; us: { code: string; label: string } }; ai: boolean; running: string; lastError: string; fees: { kr: number; krTax: number; us: number } };
 
 const MK: Record<string, string> = { kr: '국내', us: '미국' };
 const t16 = (iso: string) => `${iso.slice(5, 10).replace('-', '/')} ${iso.slice(11, 16)}`;
@@ -57,7 +62,17 @@ function Accounts({ x, reload }: { x: View; reload: () => void }) {
   const pick = (id: string) => {
     const n = new URLSearchParams(sp);
     n.set('a', id);
+    n.delete('m');
     setSp(n, { replace: true });
+  };
+  // 팀원 한 명 보기 (?m=). 뒤로 가기로 돌아올 수 있게 기록을 남긴다
+  const agent = sel?.agents.find((g) => g.id === sp.get('m'));
+  const pickAgent = (id: string) => {
+    const n = new URLSearchParams(sp);
+    if (id) n.set('m', id);
+    else n.delete('m');
+    setSp(n);
+    window.scrollTo(0, 0);
   };
   const [adding, setAdding] = useState(false);
   return (
@@ -73,9 +88,16 @@ function Accounts({ x, reload }: { x: View; reload: () => void }) {
         </button>
       </div>
       {adding && <NewAccount x={x} done={(id) => { setAdding(false); reload(); if (id) pick(id); }} />}
-      {x.accounts.length > 1 && <Compare x={x} />}
-      {sel && <AcctView key={sel.id} a={sel} x={x} reload={reload} />}
-      <Rules x={x} />
+      {agent ? (
+        <AgentView g={agent} back={() => pickAgent('')} />
+      ) : (
+        <>
+          {x.accounts.length > 1 && <Compare x={x} />}
+          {sel && <AcctView key={sel.id} a={sel} x={x} reload={reload} onAgent={pickAgent} />}
+          <HqCard hq={x.hq} accounts={x.accounts.map((a) => ({ id: a.id, name: a.name, cash: a.value.cash }))} ai={x.ai} reload={reload} />
+          <Rules x={x} />
+        </>
+      )}
     </div>
   );
 }
@@ -85,7 +107,7 @@ function Compare({ x }: { x: View }) {
     <section className="card" aria-labelledby="h-hn-cmp">
       <div className="card-head">
         <h2 id="h-hn-cmp">계좌 비교</h2>
-        <span className="sub">모두 1천만 원 가상 · 같은 한도</span>
+        <span className="sub">수익률은 맡은 돈 대비 (본부가 옮긴 돈 반영) · 한도는 계좌마다 AI 가 정함</span>
       </div>
       <div className="tbl-wrap">
         <table className="tbl">
@@ -93,6 +115,7 @@ function Compare({ x }: { x: View }) {
             <tr>
               <th>계좌</th>
               <th>방식</th>
+              <th className="num">맡은 돈</th>
               <th className="num">총평가</th>
               <th className="num">수익률</th>
               <th className="num">현금</th>
@@ -104,7 +127,11 @@ function Compare({ x }: { x: View }) {
             {[...x.accounts].sort((a, b) => b.value.pnlPct - a.value.pnlPct).map((a) => (
               <tr key={a.id}>
                 <td>{a.name}</td>
-                <td className="sub">{a.strategy === 'team' ? `팀 ${a.team.length}명` : 'AI 단독'}</td>
+                <td className="sub">
+                  {a.strategy === 'team' ? `팀 ${a.team.length}명` : 'AI 단독'}
+                  {a.halted ? ' · 정지' : ''}
+                </td>
+                <td className="num">{fmt(a.start)}</td>
                 <td className="num">{fmt(a.value.total)}</td>
                 <td className="num">
                   <span className={tone(a.value.pnlPct)}>{changeText(a.value.pnlPct)}</span>
@@ -278,9 +305,23 @@ function Debate({ talk, block }: { talk: Say[]; block?: string[] }) {
   );
 }
 
-function AcctView({ a, x, reload }: { a: Acct; x: View; reload: () => void }) {
+function AcctView({ a, x, reload, onAgent }: { a: Acct; x: View; reload: () => void; onAgent: (id: string) => void }) {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+  const review = async () => {
+    setReviewing(true);
+    setMsg('채점하고 교훈을 고쳐 쓰는 중입니다…');
+    try {
+      const r = await post<{ reviewed: string[] }>(`/api/harness/${a.id}/review`, {});
+      setMsg(r.reviewed.length ? `복기 끝: ${r.reviewed.join(', ')}` : '채점은 했지만 교훈을 고칠 만큼 판단이 쌓인 팀원이 없습니다 (5번부터)');
+    } catch (e) {
+      setMsg(`안 됨: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setReviewing(false);
+      reload();
+    }
+  };
   const val = a.value;
   const run = async (m: 'kr' | 'us') => {
     setBusy(m);
@@ -304,7 +345,7 @@ function AcctView({ a, x, reload }: { a: Acct; x: View; reload: () => void }) {
     if (s.code !== 'regular') return `${MK[m]} ${s.label} · 정규장에만 판단`;
     const last = a.lastDecide[m];
     if (!last) return `${MK[m]} 정규장 · 장 시작 30분 뒤부터 1시간마다`;
-    const mins = Math.max(0, Math.round((last + x.limits.decideEveryMin * 60 - Date.now() / 1000) / 60));
+    const mins = Math.max(0, Math.round((last + a.limits.decideEveryMin * 60 - Date.now() / 1000) / 60));
     return `${MK[m]} 정규장 · 다음 판단 약 ${mins}분 뒤`;
   };
   return (
@@ -330,7 +371,7 @@ function AcctView({ a, x, reload }: { a: Acct; x: View; reload: () => void }) {
         <div className="sum-item">
           <span className="sum-k">오늘 매매</span>
           <b className="sum-v">
-            {a.today.n}/{x.limits.maxTradesDay}번
+            {a.today.n}/{a.limits.maxTradesDay}번
           </b>
           <span className="sum-s">손절 포함</span>
         </div>
@@ -357,10 +398,13 @@ function AcctView({ a, x, reload }: { a: Acct; x: View; reload: () => void }) {
           ))}
         </div>
         {msg && <p className={msg.startsWith('안 됨') || msg.startsWith('판단 실패') ? 'o-warn' : 'o-ok'}>{msg}</p>}
+        {a.halted && <p className="o-warn">정지됨: {a.halted}. 다시 켜면 지금 값을 새 기준으로 삼습니다.</p>}
         {!x.ai && <p className="o-warn">AI 가 연결돼 있지 않아 판단하지 않습니다 (손절만 동작).</p>}
         {x.lastError && <p className="sub">마지막 오류: {x.lastError}</p>}
       </section>
 
+      <AgentsCard agents={a.agents} onPick={onAgent} reviewing={reviewing} onReview={review} />
+      <LimitsCard aid={a.id} limits={a.limits} hard={x.hard} haltPct={x.haltPct} log={a.limitLog} reload={reload} />
       {a.strategy === 'team' && <TeamCard a={a} x={x} reload={reload} />}
 
       <section className="card" aria-labelledby={`h-pos-${a.id}`}>
@@ -432,6 +476,11 @@ function AcctView({ a, x, reload }: { a: Acct; x: View; reload: () => void }) {
                 {dc.debate && dc.debate.length > 0 && <Debate talk={dc.debate} block={dc.block} />}
                 {dc.debateAt && <p className="sub">{dc.debateAt.slice(11, 16)} 팀 토론을 보고 최종 결정자가 다시 판단</p>}
                 {dc.error ? <p className="o-warn">판단 실패: {dc.error}</p> : <p>{dc.manager ? <b>{dc.manager}: </b> : null}{dc.view || '(판단 글 없음)'}</p>}
+                {dc.limits && dc.limits.length > 0 && (
+                  <p className="hn-lim">
+                    한도 바꿈: {dc.limits.join(', ')} {dc.limitsWhy && <span className="sub">· {dc.limitsWhy}</span>}
+                  </p>
+                )}
                 {dc.orders.length > 0 ? (
                   <ul className="hn-orders">
                     {dc.orders.map((o, k) => (
@@ -502,24 +551,21 @@ function AcctView({ a, x, reload }: { a: Acct; x: View; reload: () => void }) {
 }
 
 function Rules({ x }: { x: View }) {
-  const l = x.limits;
   return (
     <section className="card" aria-labelledby="h-hn-rules">
       <div className="card-head">
-        <h2 id="h-hn-rules">하네스 규칙 (서버 코드가 강제)</h2>
+        <h2 id="h-hn-rules">하네스 규칙</h2>
       </div>
       <ul className="hn-rules">
-        <li>판단: AI 가 국내·미국 정규장마다 장 시작 30분 뒤부터 {l.decideEveryMin}분마다. 한 번에 주문안 최대 {l.maxOrdersPerDecision}개</li>
-        <li>투자 범위: 코스피200, S&P500·나스닥100·다우30 구성종목과 지정 ETF</li>
-        <li>
-          한 종목 최대 {l.maxPosPct}% · 한 번 매수 최대 {l.maxTradePct}% · 매수 뒤 현금 {l.minCashPct}% 이상 · 하루 매매 {l.maxTradesDay}번
-        </li>
-        <li>손절: 평균단가 대비 {l.stopPct}% 면 1분 안에 전량 매도 (AI 판단과 상관없이)</li>
+        <li>판단: 계좌마다 국내·미국 정규장에서 장 시작 30분 뒤부터, AI 가 정한 주기로. 팀 계좌는 장마다 하루 한 번 팀 전체 토론</li>
+        <li>한도(한 종목·한 번 매수·현금·하루 매매·손절·주기·투자 범위)는 AI 가 성적을 보고 스스로 정합니다. 바꿀 수 있는 폭은 정해 둠</li>
+        <li>복기: 장 마감 보고 뒤 판단을 실제 가격으로 채점하고, 5번 넘게 채점된 팀원은 교훈을 스스로 고쳐 씁니다</li>
+        <li>운용 본부: 매주 토요일 10:00 계좌 사이 돈 옮기기, 팀원 교체, 2주 넘은 꼴찌 계좌 해체와 새 팀 만들기</li>
+        <li>코드가 강제하는 것: 계좌가 맡은 돈 대비 {x.haltPct}% 면 정지, 현금보다 많이 사지 않음(빚 없음), 리스크 관리자가 반대한 종목은 다음 토론까지 매수 금지, 비상 정지</li>
         <li>
           체결: 실제 한투 시세로 바로 체결한 것으로 계산. 수수료 국내 {(x.fees.kr * 100).toFixed(3)}%, 국내 매도 세금 {(x.fees.krTax * 100).toFixed(2)}%, 미국 {(x.fees.us * 100).toFixed(2)}% (환전 비용과 호가 차이는 빠짐)
         </li>
-        <li>비상 정지(설정)가 켜지면 아무것도 하지 않습니다. 진짜 계좌 주문은 하지 않습니다.</li>
-        <li>보고: 국내 장 마감 뒤 15:45, 미국 장 마감 뒤 06:15 텔레그램</li>
+        <li>진짜 계좌 주문은 하지 않습니다. 보고: 국내 15:45, 미국 06:15 텔레그램</li>
       </ul>
     </section>
   );
