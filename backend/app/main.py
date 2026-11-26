@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import activity, ai, alerts, auth, evolve, guard, config, harness, ledger, market, orders, prices, realtime, rules, settings, telegram, views
+from . import activity, ai, alerts, ants, auth, evolve, guard, config, harness, ledger, market, orders, prices, realtime, rules, settings, telegram, views
 from .kis import URGENT, KISError, kis
 from .universe import UNIVERSE
 
@@ -502,18 +502,35 @@ class HarnessRun(BaseModel):
 
 class HarnessNew(BaseModel):
     name: str = ""
-    strategy: str = "team"
-    preset: str = "balanced"
+    ants: list[str]
 
 
 class HarnessTeam(BaseModel):
-    team: list[dict]
+    team: list
+
+
+class AntIn(BaseModel):
+    name: str = ""
+    role: str | None = None
+    persona: str | None = None
+    temper: str | None = None
+    motto: str | None = None
+    philosophy: str | None = None
+    color: int | None = None
+
+
+class AntStatus(BaseModel):
+    status: str
+
+
+class AntGen(BaseModel):
+    hint: str = ""
 
 
 @app.post("/api/harness", dependencies=api)
 def new_harness(b: HarnessNew):
     try:
-        a = harness.create(b.name, b.strategy, b.preset)
+        a = harness.create(b.name, b.ants)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     activity.log("harness", f"가상 계좌 만듦: {a['name']}")
@@ -529,7 +546,7 @@ def put_harness_team(aid: str, b: HarnessTeam):
         harness.set_team(a, b.team)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    activity.log("harness", f"{a['name']} 팀 바꿈: " + ", ".join(harness.agent_name(m) for m in a["team"]))
+    activity.log("harness", f"{a['name']} 팀 바꿈: " + ", ".join(m["name"] for m in harness.team_of(a)))
     return {"ok": True}
 
 
@@ -576,6 +593,58 @@ class HarnessMove(BaseModel):
     src: str
     dst: str
     amount: float
+
+
+# ---------- 개미 캐릭터 (2026-11-26) ----------
+@app.post("/api/ants", dependencies=api)
+def new_ant(b: AntIn):
+    try:
+        x = ants.create(b.model_dump(exclude_none=True))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    harness._save()
+    activity.log("harness", f"개미 만듦: {x['name']}")
+    return ants.view(x)
+
+
+@app.put("/api/ants/{ant_id}", dependencies=api)
+def put_ant(ant_id: str, b: AntIn):
+    x = ants.get(ant_id)
+    if not x:
+        raise HTTPException(404, "없는 개미입니다")
+    try:
+        ants.update(x, {k: v for k, v in b.model_dump(exclude_none=True).items() if not (k == "name" and not v)})
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    for a in ants.teams_of(ant_id):
+        a["debate"] = {}  # 캐릭터가 바뀌면 다음 판단에서 새로 토론
+    harness._save()
+    activity.log("harness", f"개미 고침: {x['name']}")
+    return ants.view(x)
+
+
+@app.post("/api/ants/{ant_id}/status", dependencies=api)
+def ant_status(ant_id: str, b: AntStatus):
+    x = ants.get(ant_id)
+    if not x:
+        raise HTTPException(404, "없는 개미입니다")
+    try:
+        ants.set_status(x, b.status)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    harness._save()
+    activity.log("harness", f"개미 {'휴직' if b.status == 'rest' else '복귀'}: {x['name']}")
+    return ants.view(x)
+
+
+@app.post("/api/ants/generate", dependencies=api)
+async def gen_ant(b: AntGen):
+    if not ai.configured():
+        raise HTTPException(400, "AI 가 연결돼 있지 않습니다")
+    try:
+        return await ants.generate(b.hint)
+    except ValueError as e:
+        raise HTTPException(400, f"AI 답을 읽지 못했습니다: {e}") from e
 
 
 @app.get("/api/harness/summary", dependencies=api)

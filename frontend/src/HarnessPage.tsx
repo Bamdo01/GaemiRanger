@@ -1,18 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { post, put, usePoll, useServer } from './api';
+import { post, usePoll, useServer } from './api';
 import { arrow, changeText, fmt, fmt2, signed, tone } from './lib';
-import { AgentsCard, AgentView, HqCard, LimitsCard, type Agent, type Hq, type LimitsT } from './HarnessParts';
+import { HqCard, LimitsCard, type Hq, type LimitsT } from './HarnessParts';
+import AntFace from './AntFace';
+import { AntDex, AntView, PickAnts, TeamAnts, type Ant } from './AntsDex';
 
 // 투자 하네스 (2026-11-25): 계좌 하나를 맡아 굴리는 자동매매 틀. 지금은 가상 계좌(1천만 원)만.
 // AI 가 1시간마다 판단하고, 한도는 서버 코드가 강제한다. 진짜 계좌 주문은 하지 않는다.
 type Pos = { key: string; asset: 'kr' | 'us'; code: string; name: string; qty: number; avg: number; price: number; amt: number; pnl: number; pnlPct: number; weight: number };
 type Trade = { at: string; side: 'buy' | 'sell'; market: 'kr' | 'us'; code: string; name: string; qty: number; price: number; amount: number; fee: number; tax: number; by: string; reason: string; realized?: number };
-type Say = { id: string; role: string; persona: string; temper: string; name: string; text: string; stance?: string; picks: { side?: string; code?: string; reason?: string }[]; block: string[] };
+type Say = { id: string; color?: number; role: string; persona: string; temper: string; name: string; text: string; stance?: string; picks: { side?: string; code?: string; reason?: string }[]; block: string[] };
 type Decision = { at: string; market: 'kr' | 'us'; why: string; view: string; orders: { side?: string; code?: string; amountKrw?: number; qty?: number | string; reason?: string }[]; results: string[]; error: string; debate?: Say[]; block?: string[]; debateAt?: string; manager?: string; limits?: string[]; limitsWhy?: string };
-type Member = { id: string; role: string; persona: string; temper: string; name?: string };
+type Member = { id: string; role: string; persona: string; temper: string; name: string; color: number };
 type Item = { name: string; desc: string };
-type Catalog = { roles: Record<string, Item>; personas: Record<string, Item>; tempers: Record<string, Item>; presets: Record<string, { name: string; team: Member[] }> };
+type Catalog = { roles: Record<string, Item>; personas: Record<string, Item>; tempers: Record<string, Item>; colors: string[] };
 type Acct = {
   id: string;
   name: string;
@@ -31,10 +33,10 @@ type Acct = {
   limits: LimitsT;
   limitLog: { at: string; by: string; changes: string[]; why: string }[];
   halted: string;
-  agents: Agent[];
+  agents: string[];
 };
 type Limits = { maxPosPct: number; maxTradePct: number; maxTradesDay: number; minCashPct: number; stopPct: number; maxOrdersPerDecision: number; decideEveryMin: number };
-type View = { accounts: Acct[]; catalog: Catalog; limits: Limits; hard: Record<string, [number, number]>; haltPct: number; hq: Hq; sessions: { kr: { code: string; label: string }; us: { code: string; label: string } }; ai: boolean; running: string; lastError: string; fees: { kr: number; krTax: number; us: number } };
+type View = { accounts: Acct[]; ants: Ant[]; catalog: Catalog; limits: Limits; hard: Record<string, [number, number]>; haltPct: number; hq: Hq; sessions: { kr: { code: string; label: string }; us: { code: string; label: string } }; ai: boolean; running: string; lastError: string; fees: { kr: number; krTax: number; us: number } };
 
 const MK: Record<string, string> = { kr: '국내', us: '미국' };
 const t16 = (iso: string) => `${iso.slice(5, 10).replace('-', '/')} ${iso.slice(11, 16)}`;
@@ -65,21 +67,27 @@ function Accounts({ x, reload }: { x: View; reload: () => void }) {
     n.delete('m');
     setSp(n, { replace: true });
   };
-  // 팀원 한 명 보기 (?m=). 뒤로 가기로 돌아올 수 있게 기록을 남긴다
-  const agent = sel?.agents.find((g) => g.id === sp.get('m'));
-  const pickAgent = (id: string) => {
+  // 개미 한 마리 보기 (?m=), 개미 도감 (?v=ants). 뒤로 가기로 돌아올 수 있게 기록을 남긴다
+  const ant = x.ants.find((g) => g.id === sp.get('m'));
+  const dex = sp.get('v') === 'ants';
+  const go = (k: 'm' | 'v', val: string) => {
     const n = new URLSearchParams(sp);
-    if (id) n.set('m', id);
-    else n.delete('m');
+    if (val) n.set(k, val);
+    else n.delete(k);
+    if (k === 'v') n.delete('m');
     setSp(n);
     window.scrollTo(0, 0);
   };
+  const pickAgent = (id: string) => go('m', id);
   const [adding, setAdding] = useState(false);
   return (
     <div className="assets harness">
       <div className="m-acct hn-acct" role="group" aria-label="가상 계좌 고르기">
+        <button type="button" className="hn-dex-pill" aria-pressed={dex} onClick={() => go('v', dex ? '' : 'ants')}>
+          🐜 개미 도감
+        </button>
         {x.accounts.map((a) => (
-          <button key={a.id} type="button" aria-pressed={a.id === sel.id} onClick={() => pick(a.id)}>
+          <button key={a.id} type="button" aria-pressed={!dex && a.id === sel.id} onClick={() => { pick(a.id); if (dex) go('v', ''); }}>
             {a.name} <span className={tone(a.value.pnlPct)}>{a.value.pnlPct >= 0 ? '+' : ''}{a.value.pnlPct.toFixed(2)}%</span>
           </button>
         ))}
@@ -88,8 +96,10 @@ function Accounts({ x, reload }: { x: View; reload: () => void }) {
         </button>
       </div>
       {adding && <NewAccount x={x} done={(id) => { setAdding(false); reload(); if (id) pick(id); }} />}
-      {agent ? (
-        <AgentView g={agent} back={() => pickAgent('')} />
+      {ant ? (
+        <AntView a={ant} catalog={x.catalog} ai={x.ai} back={() => window.history.back()} reload={reload} />
+      ) : dex ? (
+        <AntDex ants={x.ants} catalog={x.catalog} ai={x.ai} reload={reload} onPick={pickAgent} />
       ) : (
         <>
           {x.accounts.length > 1 && <Compare x={x} />}
@@ -128,8 +138,12 @@ function Compare({ x }: { x: View }) {
               <tr key={a.id}>
                 <td>{a.name}</td>
                 <td className="sub">
-                  {a.strategy === 'team' ? `팀 ${a.team.length}명` : 'AI 단독'}
-                  {a.halted ? ' · 정지' : ''}
+                  <span className="hn-faces">
+                    {a.team.map((m) => (
+                      <AntFace key={m.id} color={m.color} role={m.role} temper={m.temper} size={20} title={m.name} />
+                    ))}
+                  </span>
+                  {a.halted ? ' 정지' : ''}
                 </td>
                 <td className="num">{fmt(a.start)}</td>
                 <td className="num">{fmt(a.value.total)}</td>
@@ -150,38 +164,32 @@ function Compare({ x }: { x: View }) {
 
 function NewAccount({ x, done }: { x: View; done: (id?: string) => void }) {
   const [name, setName] = useState('');
-  const [kind, setKind] = useState('balanced');
+  const [ids, setIds] = useState<string[]>([]);
   const [msg, setMsg] = useState('');
+  const managers = ids.filter((id) => x.ants.find((a) => a.id === id)?.role === 'manager').length;
   return (
     <section className="card" aria-labelledby="h-hn-new">
       <div className="card-head">
         <h2 id="h-hn-new">새 가상 계좌 (1천만 원)</h2>
+        <span className="sub">개미를 골라 팀을 짭니다 · 최종 결정자 한 마리 꼭</span>
       </div>
       <div className="dr-form">
         <label className="dr-field">
           <span>이름</span>
           <input className="in" value={name} maxLength={20} placeholder="비우면 자동" onChange={(e) => setName(e.target.value)} />
         </label>
-        <label className="dr-field">
-          <span>시작 팀</span>
-          <select className="dd" value={kind} onChange={(e) => setKind(e.target.value)}>
-            {Object.entries(x.catalog.presets).map(([k, p]) => (
-              <option key={k} value={k}>
-                {p.name}
-              </option>
-            ))}
-            <option value="ai">AI 단독 (팀 없음)</option>
-          </select>
-        </label>
       </div>
+      <PickAnts ants={x.ants} value={ids} onChange={setIds} />
+      {ids.length > 0 && managers !== 1 && <p className="o-warn">최종 결정자 역할의 개미를 한 마리 골라 주세요 (지금 {managers}마리).</p>}
       {msg && <p className="o-warn">{msg}</p>}
       <div className="em-form">
         <button
           type="button"
           className="btn pri"
+          disabled={managers !== 1 || ids.length > 6}
           onClick={async () => {
             try {
-              const r = await post<{ id: string }>('/api/harness', { name, strategy: kind === 'ai' ? 'ai' : 'team', preset: kind === 'ai' ? 'balanced' : kind });
+              const r = await post<{ id: string }>('/api/harness', { name, ants: ids });
               done(r.id);
             } catch (e) {
               setMsg(`안 됨: ${e instanceof Error ? e.message : String(e)}`);
@@ -198,91 +206,19 @@ function NewAccount({ x, done }: { x: View; done: (id?: string) => void }) {
   );
 }
 
-/** 팀 편집: 역할·투자관·성향 (매니저는 꼭 한 명, 2~6명) */
-function TeamCard({ a, x, reload }: { a: Acct; x: View; reload: () => void }) {
-  const c = x.catalog;
-  const [team, setTeam] = useState<Member[]>(a.team);
-  const [msg, setMsg] = useState('');
-  useEffect(() => setTeam(a.team), [a.id, a.team.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const changed = JSON.stringify(team.map(({ role, persona, temper }) => [role, persona, temper])) !== JSON.stringify(a.team.map(({ role, persona, temper }) => [role, persona, temper]));
-  const set = (i: number, k: 'role' | 'persona' | 'temper', val: string) => setTeam(team.map((m, j) => (j === i ? { ...m, [k]: val } : m)));
-  const sel = (i: number, k: 'role' | 'persona' | 'temper', list: Record<string, Item>, label: string) => (
-    <select className="dd" aria-label={`${i + 1}번 팀원 ${label}`} value={team[i][k]} onChange={(e) => set(i, k, e.target.value)}>
-      {Object.entries(list).map(([v, it]) => (
-        <option key={v} value={v}>
-          {it.name}
-        </option>
-      ))}
-    </select>
-  );
-  return (
-    <section className="card" aria-labelledby={`h-team-${a.id}`}>
-      <div className="card-head">
-        <h2 id={`h-team-${a.id}`}>팀 {team.length}명</h2>
-        <span className="sub">장마다 하루 한 번 모두 토론 · 매시간은 최종 결정자만</span>
-      </div>
-      <ul className="hn-team">
-        {team.map((m, i) => (
-          <li key={i}>
-            <span className="hn-ava" aria-hidden="true">
-              {c.personas[m.persona].name.slice(0, 1)}
-            </span>
-            <div className="hn-team-sel">
-              {sel(i, 'role', c.roles, '역할')}
-              {sel(i, 'persona', c.personas, '투자관')}
-              {sel(i, 'temper', c.tempers, '성향')}
-            </div>
-            <button type="button" className="btn sm" onClick={() => setTeam(team.filter((_, j) => j !== i))} aria-label={`${i + 1}번 팀원 빼기`} disabled={team.length <= 2}>
-              빼기
-            </button>
-            <p className="sub hn-team-desc">
-              {c.roles[m.role].desc} {c.personas[m.persona].desc} ({c.tempers[m.temper].name}: {c.tempers[m.temper].desc})
-            </p>
-          </li>
-        ))}
-      </ul>
-      <div className="em-form">
-        <button type="button" className="btn" disabled={team.length >= 6} onClick={() => setTeam([...team, { id: '', role: 'analyst', persona: 'buffett', temper: 'mid' }])}>
-          ＋ 팀원 더하기
-        </button>
-        {Object.entries(c.presets).map(([k, pr]) => (
-          <button key={k} type="button" className="btn sm" onClick={() => setTeam(pr.team)}>
-            {pr.name}로
-          </button>
-        ))}
-        <span className="grow" />
-        <button
-          type="button"
-          className="btn pri"
-          disabled={!changed}
-          onClick={async () => {
-            setMsg('');
-            try {
-              await put(`/api/harness/${a.id}/team`, { team });
-              setMsg('저장했습니다. 다음 판단 때 새 팀이 토론합니다.');
-              reload();
-            } catch (e) {
-              setMsg(`안 됨: ${e instanceof Error ? e.message : String(e)}`);
-            }
-          }}
-        >
-          팀 저장
-        </button>
-      </div>
-      {msg && <p className={msg.startsWith('안 됨') ? 'o-warn' : 'o-ok'}>{msg}</p>}
-    </section>
-  );
-}
-
 /** 토론: 팀원 의견을 대화처럼 */
 function Debate({ talk, block }: { talk: Say[]; block?: string[] }) {
   return (
     <ul className="hn-talk">
       {talk.map((s, i) => (
         <li key={i} className={`hn-say hn-${s.role}`}>
-          <span className="hn-ava" aria-hidden="true">
-            {s.name.slice(0, 1)}
-          </span>
+          {s.color !== undefined ? (
+            <AntFace color={s.color} role={s.role} temper={s.temper} size={34} />
+          ) : (
+            <span className="hn-ava" aria-hidden="true">
+              {s.name.slice(0, 1)}
+            </span>
+          )}
           <div>
             <b>{s.name}</b> <small className="sub">{s.temper === 'cons' ? '보수' : s.temper === 'aggr' ? '공격' : '중립'}</small>
             {s.stance && <small className="hn-stance">비중 {s.stance}</small>}
@@ -352,7 +288,7 @@ function AcctView({ a, x, reload, onAgent }: { a: Acct; x: View; reload: () => v
     <>
       <section className="summary" aria-label={`${a.name} 요약`}>
         <div className="sum-item">
-          <span className="sum-k">{a.strategy === 'team' ? `팀 ${a.team.length}명` : 'AI 단독'} · 가상</span>
+          <span className="sum-k">개미 {a.team.length}마리 · 가상</span>
           <b className="sum-v">{fmt(val.total)}원</b>
           <span className="sum-s">
             {a.createdAt.slice(0, 10)} 시작 · {fmt(a.start)}원
@@ -379,7 +315,7 @@ function AcctView({ a, x, reload, onAgent }: { a: Acct; x: View; reload: () => v
 
       <section className="card" aria-labelledby={`h-ctl-${a.id}`}>
         <div className="card-head">
-          <h2 id={`h-ctl-${a.id}`}>{a.strategy === 'team' ? 'AI 팀 하네스' : 'AI 하네스'}</h2>
+          <h2 id={`h-ctl-${a.id}`}>{a.team.length > 1 ? '개미 팀 하네스' : '개미 혼자 하네스'}</h2>
           <span className={`hn-state ${a.enabled ? 'on' : ''}`}>{a.enabled ? '켜짐 · 자동으로 판단' : '꺼짐'}</span>
           <span className="grow" />
           <button type="button" className={`btn sm ${a.enabled ? '' : 'pri'}`} onClick={toggle}>
@@ -403,9 +339,8 @@ function AcctView({ a, x, reload, onAgent }: { a: Acct; x: View; reload: () => v
         {x.lastError && <p className="sub">마지막 오류: {x.lastError}</p>}
       </section>
 
-      <AgentsCard agents={a.agents} onPick={onAgent} reviewing={reviewing} onReview={review} />
+      <TeamAnts aid={a.id} team={a.agents} ants={x.ants} catalog={x.catalog} onPick={onAgent} reload={reload} reviewing={reviewing} onReview={review} />
       <LimitsCard aid={a.id} limits={a.limits} hard={x.hard} haltPct={x.haltPct} log={a.limitLog} reload={reload} />
-      {a.strategy === 'team' && <TeamCard a={a} x={x} reload={reload} />}
 
       <section className="card" aria-labelledby={`h-pos-${a.id}`}>
         <div className="card-head">

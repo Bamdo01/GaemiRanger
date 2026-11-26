@@ -4,7 +4,7 @@
    팀원마다 AI 가 자기 성적표를 보고 교훈을 고쳐 쓴다. 교훈은 다음 판단의 지시문에 들어간다.
 2) 운용 본부: 매주 토요일 10:00 (한국 시간) 모든 가상 계좌의 성적을 보고
    - 계좌 사이 현금 옮기기 (잘하는 팀에 더)
-   - 성적 나쁜 팀원의 투자관·성향 바꾸기
+   - 새 개미 뽑기, 팀의 개미 바꾸기, 놀고 있는 개미 휴직 (2026-11-26 개미 캐릭터)
    - 2주 넘은 꼴찌 계좌 해체 + 잘하는 팀을 바꾼 새 팀 만들기
    - 실제 계좌는 조언만 (돈을 움직이지 않는다)
    를 AI 가 정하고 코드가 그대로 적용한다. 진짜 계좌 주문은 하지 않는다.
@@ -13,7 +13,7 @@
 import time
 from datetime import datetime, timedelta
 
-from . import ai, harness, market, settings, telegram
+from . import ai, ants, harness, market, settings, telegram
 
 MIN_SCORED = 5  # 채점된 판단이 이만큼 쌓여야 교훈을 쓴다 (우연을 실력으로 믿지 않게)
 SCORE_AFTER_H = 18  # 이 시간이 지난 판단부터 채점
@@ -77,8 +77,9 @@ async def score(a: dict, limit: int = 60) -> int:
     return n
 
 
-def stats(a: dict, who: str, sig: str) -> dict:
-    cs = [c for c in a.get("calls") or [] if c["who"] == who and c.get("sig") == sig and c.get("ret") is not None]
+def stats(ant_id: str) -> dict:
+    """개미 한 마리의 성적 (모든 계좌의 채점된 판단)"""
+    cs = [c for a in harness.load()["accounts"] for c in a.get("calls") or [] if c["who"] == ant_id and c.get("ret") is not None]
     if not cs:
         return {"n": 0, "hit": 0, "avg": 0, "best": None, "worst": None}
     e = [edge(c) for c in cs]
@@ -109,80 +110,66 @@ REVIEW = """너는 가상 투자 팀의 한 사람으로서 자기 판단을 복
 답은 JSON 하나만: {"lessons": ["교훈", ...], "note": "이번 복기에서 바꾼 점 한 문장"}"""
 
 
-def _people(a: dict) -> list[dict]:
-    if a.get("strategy") == "team":
-        return list(a.get("team") or [])
-    return [{"id": "solo", "role": "manager", "persona": "neutral", "temper": "mid"}]
-
-
-def _agent(a: dict, m: dict) -> dict:
-    sig = harness._sig_of(a, m["id"])
-    ag = a.setdefault("agents", {}).get(m["id"])
-    if not ag or ag.get("sig") != sig:
-        # 팀원이 바뀌면 교훈은 새로 (다른 사람이므로)
-        ag = a["agents"][m["id"]] = {"sig": sig, "lessons": [], "log": [], "stats": {}, "reviewedN": 0}
-    return ag
-
-
 async def review(a: dict, tag: str = "") -> list[str]:
-    """채점하고, 새로 채점된 판단이 있는 팀원마다 교훈을 고쳐 쓴다"""
+    """채점하고, 이 계좌 팀의 개미 중 새로 채점된 판단이 있는 개미마다 교훈을 고쳐 쓴다 (교훈은 개미에 붙는다)"""
     out = []
     try:
         await score(a)
     except Exception as e:  # noqa: BLE001
         harness.state["lastError"] = f"채점 실패: {e}"[:300]
-    for m in _people(a):
-        ag = _agent(a, m)
-        st = stats(a, m["id"], ag["sig"])
-        ag["stats"] = st
-        if st["n"] < MIN_SCORED or st["n"] == ag.get("reviewedN") or not ai.configured() or settings.get("emergency"):
+    for m in harness.team_of(a):
+        ant = ants.get(m["id"])
+        st = stats(m["id"])
+        ant["stats"] = st
+        if st["n"] < MIN_SCORED or st["n"] == ant.get("reviewedN") or not ai.configured() or settings.get("emergency"):
             continue
-        name = "AI 단독 매니저" if m["id"] == "solo" else harness.agent_name(m)
-        cs = [c for c in a["calls"] if c["who"] == m["id"] and c.get("sig") == ag["sig"] and c.get("ret") is not None][-20:]
-        val = await harness.valuation(a)
+        cs = sorted([{**c, "acct": x["name"]} for x in harness.load()["accounts"] for c in x.get("calls") or [] if c["who"] == m["id"] and c.get("ret") is not None], key=lambda c: c["at"])[-20:]
         prompt = "\n".join(
             [
-                f"[나] {name} ({harness.TEMPERS[m['temper']][0]}), 계좌 '{a['name']}'",
-                f"[계좌 성적] 시작 대비 {val['pnlPct']:+.2f}%, 현금 {val['cash'] / (val['total'] or 1) * 100:.0f}%",
+                f"[나] '{ant['name']}' 개미, {harness.agent_title(ant)} ({harness.TEMPERS[ant['temper']][0]})",
+                *([f"[내 투자 철학] {ant['philosophy']}"] if ant.get("philosophy") else []),
                 f"[내 성적] 채점 {st['n']}번, 맞힌 비율 {st['hit']:.0f}%, 판단 방향 평균 {st['avg']:+.2f}%",
                 "[최근 판단과 결과]",
                 *[_call_line(c) for c in cs],
                 "[지금 교훈]",
-                *([f"- {x['text']}" for x in ag["lessons"]] or ["(없음)"]),
+                *([f"- {x['text']}" for x in ant.get("lessons") or []] or ["(없음)"]),
                 "",
                 "교훈을 고쳐 JSON 으로.",
             ]
         )
         try:
             d = harness._parse(await ai.ask_system(REVIEW, prompt, 800), need_orders=False)
-        except Exception as e:  # noqa: BLE001 - 한 명이 실패해도 계속
-            ag["log"].append({"at": harness._iso(), "added": [], "removed": [], "note": f"복기 실패: {e.__class__.__name__}"})
+        except Exception as e:  # noqa: BLE001 - 한 마리가 실패해도 계속
+            ant.setdefault("log", []).append({"at": harness._iso(), "added": [], "removed": [], "note": f"복기 실패: {e.__class__.__name__}"})
             continue
         new = [str(x).strip()[:200] for x in d.get("lessons") or [] if str(x).strip()][:MAX_LESSONS]
-        old = [x["text"] for x in ag["lessons"]]
-        keep_at = {x["text"]: x["at"] for x in ag["lessons"]}
-        ag["lessons"] = [{"text": x, "at": keep_at.get(x, harness._iso())} for x in new]
-        ag["log"].append({"at": harness._iso(), "added": [x for x in new if x not in old], "removed": [x for x in old if x not in new], "note": str(d.get("note") or "")[:300], "hit": round(st["hit"]), "n": st["n"]})
-        ag["log"] = ag["log"][-60:]
-        ag["reviewedN"] = st["n"]
-        ag["reviewedAt"] = harness._iso()
-        out.append(name)
+        cur = ant.get("lessons") or []
+        old = [x["text"] for x in cur]
+        keep_at = {x["text"]: x["at"] for x in cur}
+        ant["lessons"] = [{"text": x, "at": keep_at.get(x, harness._iso())} for x in new]
+        ant.setdefault("log", []).append({"at": harness._iso(), "added": [x for x in new if x not in old], "removed": [x for x in old if x not in new], "note": str(d.get("note") or "")[:300], "hit": round(st["hit"]), "n": st["n"]})
+        ant["log"] = ant["log"][-60:]
+        ant["reviewedN"] = st["n"]
+        ant["reviewedAt"] = harness._iso()
+        out.append(ant["name"])
     harness._save()
     return out
 
 
 # ---------- 운용 본부 ----------
-HQ = """너는 '개미레인저' 가상 투자 계좌들을 총괄하는 운용 본부장이다. 계좌마다 AI 팀이 따로 굴린다. 목표는 가상 계좌 전체의 돈을 가장 크게 불리는 것.
+HQ = """너는 '개미레인저' 가상 투자 계좌들을 총괄하는 운용 본부장이다. 계좌마다 개미 캐릭터들로 된 AI 팀이 따로 굴린다. 목표는 가상 계좌 전체의 돈을 가장 크게 불리는 것.
 할 수 있는 것 (모두 가상 돈, 코드가 그대로 적용):
 - moves: 계좌 사이 현금 옮기기. 주는 계좌의 현금 안에서, 그 계좌 총평가의 절반까지. 잘하는 팀에 더 맡겨라.
-- tune: 팀 계좌의 성적 나쁜 팀원 한 명의 역할·투자관·성향 바꾸기 (그 팀원의 교훈은 새로 시작).
+- hire: 새 개미 뽑기 (이름·역할·투자관·성향·말버릇·투자 철학). 뽑은 개미는 이름으로 swap·spawn 에 쓸 수 있다.
+- swap: 어떤 계좌 팀에서 개미 하나를 빼고 다른 개미(있는 개미 id 나 새로 뽑은 개미 이름)를 넣기. 최종 결정자(manager)는 팀에 꼭 한 마리.
+- rest: 어느 팀에도 없고 성적이 나쁜 개미 휴직.
 - retire: 시작한 지 14일이 넘은 계좌 하나 해체 (보유 종목을 지금 값에 다 팔고 돈은 새 팀이나 가장 잘하는 계좌로). 계좌는 최소 2개 남긴다.
-- spawn: 새 팀 계좌 만들기 (retire 와 함께, 또는 fund 로 다른 계좌 현금을 받아서). 잘하는 팀을 조금 바꾼 구성을 권한다. 계좌는 최대 6개.
+- spawn: 새 팀 계좌 만들기 (retire 와 함께, 또는 fund 로 다른 계좌 현금을 받아서). 팀은 개미 id 나 새로 뽑은 개미 이름 목록. 계좌는 최대 6개.
 - real: 사용자의 실제 계좌에 대한 조언 (돈은 움직이지 않는다. 짧고 구체적으로).
 성적이 짧으면(며칠) 운일 수 있다. 근거가 약하면 아무것도 하지 않아도 된다.
-역할: strategist, analyst, risk, manager (manager 는 꼭 한 명). 투자관: buffett, graham, lynch, bogle, dalio, momentum, neutral. 성향: cons, mid, aggr.
+역할: strategist, analyst, risk, manager. 투자관: buffett, graham, lynch, bogle, dalio, momentum, neutral. 성향: cons, mid, aggr. 색: 0~7.
 답은 JSON 하나만:
-{"view": "전체 판단 두세 문장", "moves": [{"from": "paper1", "to": "paper2", "amountKrw": 1000000, "reason": "..."}], "tune": [{"account": "paper2", "member": "m3", "role": "analyst", "persona": "momentum", "temper": "aggr", "reason": "..."}], "retire": {"account": "paper1", "reason": "..."} 또는 null, "spawn": {"name": "새 팀 이름", "team": [{"role": "...", "persona": "...", "temper": "..."}], "fund": [{"from": "paper2", "amountKrw": 2000000}], "reason": "..."} 또는 null, "real": ["조언", ...]}"""
+{"view": "전체 판단 두세 문장", "moves": [{"from": "paper1", "to": "paper2", "amountKrw": 1000000, "reason": "..."}], "hire": [{"name": "OO 개미", "role": "analyst", "persona": "momentum", "temper": "aggr", "motto": "...", "philosophy": "...", "color": 3}], "swap": [{"account": "paper2", "out": "ant3", "in": "ant7 또는 새 개미 이름", "reason": "..."}], "rest": [{"ant": "ant5", "reason": "..."}], "retire": {"account": "paper1", "reason": "..."} 또는 null, "spawn": {"name": "새 팀 이름", "team": ["ant2", "새 개미 이름"], "fund": [{"from": "paper2", "amountKrw": 2000000}], "reason": "..."} 또는 null, "real": ["조언", ...]}"""
 
 
 def _hq() -> dict:
@@ -252,16 +239,18 @@ async def _summary_lines() -> list[str]:
         age = (time.time() - _ts(a["createdAt"])) / 86400
         L = harness.lim(a)
         lines.append(
-            f"## {a['id']} '{a['name']}' ({'팀 ' + str(len(a.get('team') or [])) + '명' if a.get('strategy') == 'team' else 'AI 단독'}, {age:.0f}일째{', 정지됨' if not a.get('enabled') else ''})\n"
+            f"## {a['id']} '{a['name']}' (개미 {len(a.get('team') or [])}마리, {age:.0f}일째{', 정지됨' if not a.get('enabled') else ''})\n"
             f"총평가 {val['total']:,.0f}원, 맡은 돈 {a['start']:,.0f}원 대비 {val['pnlPct']:+.2f}%, 최근 7일 {_wk(a['equity'], val['total']):+.2f}%, 최대 낙폭 {_dd(a['equity']):.1f}%, 현금 {val['cash']:,.0f}원, 매매 {len(a['trades'])}번\n"
             f"한도: 한 종목 {L['maxPosPct']}%, 손절 {L['stopPct']}%, 범위 {L['universe']}\n"
             "보유: " + (", ".join(f"{r['name']} {r['weight']:.0f}%" for r in val["rows"][:8]) or "없음")
         )
-        for m in _people(a):
-            ag = (a.get("agents") or {}).get(m["id"]) or {}
-            st = ag.get("stats") or {}
-            nm = "AI 단독" if m["id"] == "solo" else f"{m['id']} {harness.agent_name(m)} ({harness.TEMPERS[m['temper']][0]})"
-            lines.append(f"  - {nm}: 채점 {st.get('n', 0)}번, 맞힘 {st.get('hit', 0):.0f}%, 평균 {st.get('avg', 0):+.2f}%")
+        lines.append("  팀: " + ", ".join(f"{m['id']} {m['name']}" for m in harness.team_of(a)))
+    lines.append("")
+    lines.append("[개미 명단 (id 이름 직함 성향 · 성적 · 소속)]")
+    for x in ants.all_():
+        st = x.get("stats") or {}
+        where = ", ".join(a["id"] for a in ants.teams_of(x["id"])) or "소속 없음"
+        lines.append(f"- {x['id']} {x['name']} {harness.agent_title(x)} ({harness.TEMPERS[x['temper']][0]}){' 휴직' if x['status'] != 'active' else ''} · 채점 {st.get('n', 0)}번 맞힘 {st.get('hit', 0):.0f}% 평균 {st.get('avg', 0):+.2f}% · {where}")
     return lines
 
 
@@ -282,9 +271,8 @@ async def hq_run(why: str = "정기") -> dict:
         try:
             for a in harness.load()["accounts"]:
                 await score(a)
-                for m in _people(a):
-                    ag = _agent(a, m)
-                    ag["stats"] = stats(a, m["id"], ag["sig"])
+            for x in ants.all_():
+                x["stats"] = stats(x["id"])
             prompt = "\n".join(["[가상 계좌들]", *await _summary_lines(), "", "[사용자 실제 계좌 (조언만)]", _real_ctx(), "", "이번 주 운용 결정을 JSON 으로."])
             d = harness._parse(await ai.ask_system(HQ, prompt, 2000), need_orders=False)
             rec["view"] = str(d.get("view") or "")[:600]
@@ -294,28 +282,40 @@ async def hq_run(why: str = "정기") -> dict:
             for mv in (d.get("moves") or [])[:6]:
                 s, t = accts.get(mv.get("from")), accts.get(mv.get("to"))
                 act.append(transfer(s, t, mv.get("amountKrw"), "hq", mv.get("reason") or "") + f" · {mv.get('reason', '')}" if s and t else f"거절: 없는 계좌 ({mv.get('from')} → {mv.get('to')})")
-            for tu in (d.get("tune") or [])[:3]:
-                a = accts.get(tu.get("account"))
-                if not a or a.get("strategy") != "team":
-                    act.append(f"거절: 팀 계좌가 아님 ({tu.get('account')})")
+            hired: dict[str, str] = {}
+            for h in (d.get("hire") or [])[:3]:
+                if not isinstance(h, dict):
                     continue
-                team = [dict(m) for m in a["team"]]
-                i = next((k for k, m in enumerate(team) if m["id"] == tu.get("member")), None)
-                if i is None:
-                    act.append(f"거절: 없는 팀원 ({tu.get('member')})")
-                    continue
-                before = harness.agent_name(team[i])
-                for k in ("role", "persona", "temper"):
-                    if tu.get(k):
-                        team[i][k] = tu[k]
                 try:
-                    a["team"] = harness.check_team(team)
+                    ant = ants.create(h, by="본부")
+                    hired[ant["name"]] = ant["id"]
+                    act.append(f"새 개미: {ant['name']} ({harness.agent_title(ant)}, {harness.TEMPERS[ant['temper']][0]}){' · ' + ant['motto'] if ant.get('motto') else ''}")
+                except ValueError as e:
+                    act.append(f"거절: 새 개미 ({e})")
+
+            def ref(x: str) -> str:
+                x = str(x or "")
+                return hired.get(x) or (x if ants.get(x) else (ants.get_by_name(x) or {}).get("id", x))
+
+            for sw in (d.get("swap") or [])[:3]:
+                a = accts.get(sw.get("account"))
+                if not a:
+                    act.append(f"거절: 없는 계좌 ({sw.get('account')})")
+                    continue
+                out_id, in_id = ref(sw.get("out")), ref(sw.get("in"))
+                team = [m["ant"] for m in a["team"] if m["ant"] != out_id]
+                if len(team) == len(a["team"]):
+                    act.append(f"거절: {a['name']} 팀에 {sw.get('out')} 없음")
+                    continue
+                if in_id:
+                    team.append(in_id)
+                try:
+                    harness.set_team(a, team)
                 except ValueError as e:
                     act.append(f"거절: {e}")
                     continue
-                a["debate"] = {}
-                (a.get("agents") or {}).pop(team[i]["id"], None)
-                act.append(f"팀원 교체: {a['name']} {before} → {harness.agent_name(a['team'][i])} ({harness.TEMPERS[a['team'][i]['temper']][0]}) · {tu.get('reason', '')}")
+                o, i = ants.get(out_id), ants.get(in_id)
+                act.append(f"개미 교체: {a['name']} {o['name'] if o else out_id} → {i['name'] if i else '(없음)'} · {sw.get('reason', '')}")
             freed, retired_name = 0.0, ""
             rt = d.get("retire") or None
             if isinstance(rt, dict) and rt.get("account") in accts:
@@ -330,7 +330,7 @@ async def hq_run(why: str = "정기") -> dict:
                     freed = await _liquidate(a)
                     a["cash"] = 0.0
                     retired_name = a["name"]
-                    hq["retired"].append({"at": harness._iso(), "id": a["id"], "name": a["name"], "team": [harness.agent_name(m) for m in a.get("team") or []], "pnlPct": round(val["pnlPct"], 2), "start": a["start"], "reason": str(rt.get("reason") or "")[:300]})
+                    hq["retired"].append({"at": harness._iso(), "id": a["id"], "name": a["name"], "team": [m["name"] for m in harness.team_of(a)], "pnlPct": round(val["pnlPct"], 2), "start": a["start"], "reason": str(rt.get("reason") or "")[:300]})
                     harness.data["accounts"] = [x for x in harness.data["accounts"] if x["id"] != a["id"]]
                     accts.pop(a["id"])
                     act.append(f"해체: {a['name']} ({val['pnlPct']:+.2f}%), 회수 {freed:,.0f}원 · {rt.get('reason', '')}")
@@ -341,8 +341,8 @@ async def hq_run(why: str = "정기") -> dict:
                     act.append("거절: 계좌는 6개까지")
                 else:
                     try:
-                        team = harness.check_team(sp["team"])
-                        new_acct = harness.create(str(sp.get("name") or "본부가 만든 팀")[:20], "team", team=team, start=0)
+                        team = [ref(x.get("ant") if isinstance(x, dict) else x) for x in sp["team"]]
+                        new_acct = harness.create(str(sp.get("name") or "본부가 만든 팀")[:20], team, start=0)
                         new_acct["cash"] = new_acct["start"] = round(freed)
                         new_acct["bornFrom"] = {"at": harness._iso(), "reason": str(sp.get("reason") or "")[:300], "replaced": retired_name}
                         freed = 0.0
@@ -350,13 +350,23 @@ async def hq_run(why: str = "정기") -> dict:
                             s = accts.get(f.get("from"))
                             if s:
                                 act.append(transfer(s, new_acct, f.get("amountKrw"), "hq", "새 팀 자금"))
-                        act.append(f"새 팀: {new_acct['name']} ({', '.join(harness.agent_name(m) for m in team)}), 시작 {new_acct['start']:,.0f}원 · {sp.get('reason', '')}")
+                        act.append(f"새 팀: {new_acct['name']} ({', '.join(m['name'] for m in harness.team_of(new_acct))}), 시작 {new_acct['start']:,.0f}원 · {sp.get('reason', '')}")
                     except ValueError as e:
                         act.append(f"거절: 새 팀 ({e})")
             if new_acct and new_acct["start"] < 100_000:
                 harness.data["accounts"] = [x for x in harness.data["accounts"] if x["id"] != new_acct["id"]]
                 act.append("거절: 새 팀에 줄 돈이 없어 만들지 않음")
                 freed += new_acct["cash"]
+            for r in (d.get("rest") or [])[:3]:
+                x = ants.get(ref(r.get("ant") if isinstance(r, dict) else r))
+                if not x:
+                    act.append(f"거절: 없는 개미 ({r})")
+                    continue
+                try:
+                    ants.set_status(x, "rest")
+                    act.append(f"휴직: {x['name']} · {r.get('reason', '') if isinstance(r, dict) else ''}")
+                except ValueError as e:
+                    act.append(f"거절: {e}")
             if freed > 0:
                 # 해체한 돈이 남으면 가장 잘하는 계좌로
                 best = max(harness.data["accounts"], key=lambda x: (x["cash"] + sum(p["qty"] * p["avgKrw"] for p in x["positions"].values())) / (x["start"] or 1))

@@ -698,3 +698,36 @@ button.sum-item { font: inherit; color: inherit; text-align: left; cursor: point
   .paper-more li .sub { display: none; }
   .hq-move .dd { flex: 1 1 40%; min-width: 0; }
 }
+/* 2026-11-26 개미 캐릭터 */
+.ant-face { flex: 0 0 auto; display: block; }
+.hn-faces { display: inline-flex; flex-wrap: wrap; gap: 1px; vertical-align: middle; }
+.hn-dex-pill { font-weight: 700; }
+.dex { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.dex-card { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 10px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: inherit; font: inherit; text-align: center; cursor: pointer; }
+.dex-card:hover { border-color: var(--sec); }
+.dex-card.rest { opacity: 0.7; }
+.dex-motto { color: var(--ink); font-style: italic; font-size: 12.5px; }
+.ant-form { margin: 10px 0 14px; padding: 12px; border-radius: 12px; background: var(--seg); display: flex; flex-direction: column; gap: 10px; }
+.ant-form-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.ant-colors { display: flex; gap: 6px; flex-wrap: wrap; }
+.ant-colors button { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+.ant-colors button[aria-checked='true'] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--panel) inset; }
+.ant-gen { flex-wrap: nowrap; }
+.ant-gen .in { flex: 1 1 auto; min-width: 0; }
+.ant-philo { display: flex; flex-direction: column; gap: 4px; }
+.ant-philo textarea { width: 100%; resize: vertical; font: inherit; }
+.ant-hero { display: flex; gap: 16px; align-items: center; margin: 6px 0 10px; }
+.ant-hero h2 { margin: 0; }
+.ant-hero p { margin: 3px 0 0; }
+.ant-philo-view { margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; background: var(--seg); font-size: 13.5px; line-height: 1.55; }
+.ag-li { display: flex; align-items: center; gap: 8px; }
+.ag-li .ag-row { flex: 1 1 auto; min-width: 0; }
+.pick-ants { list-style: none; margin: 8px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.pick-ants button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--line); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pick-ants button span { display: flex; flex-direction: column; min-width: 0; font-size: 13px; }
+.pick-ants button[aria-pressed='true'] { border-color: var(--up); background: color-mix(in srgb, var(--up) 10%, transparent); }
+@media (max-width: 640px) {
+  .dex { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pick-ants { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ant-hero { align-items: flex-start; }
+}

@@ -115,6 +115,12 @@ def load() -> dict:
                 data["accounts"].append(_new_account(_next_id(), "가상 팀 (균형 5인)", "team", preset("balanced")))
             data["teamSeeded"] = True
             _save()
+        # 2026-11-26 팀원(자리)을 개미 캐릭터로
+        if not data.get("antsMigrated"):
+            from . import ants
+
+            ants.migrate(data)
+            _save()
     return data
 
 
@@ -154,26 +160,29 @@ PRESETS = {
 PRESET_NAMES = {"balanced": "균형 5인", "conservative": "보수 3인", "aggressive": "공격 4인"}
 
 
-def agent_name(m: dict) -> str:
+def agent_title(m: dict) -> str:
     return f"{PERSONAS[m['persona']][0]}형 {ROLES[m['role']][0]}" if m["persona"] != "neutral" else ROLES[m["role"]][0]
+
+
+def agent_name(m: dict) -> str:
+    return m.get("name") or agent_title(m)
 
 
 def preset(key: str) -> list[dict]:
     return [{"id": f"m{i + 1}", "role": r, "persona": p, "temper": tp} for i, (r, p, tp) in enumerate(PRESETS[key])]
 
 
-def check_team(team: list[dict]) -> list[dict]:
-    """팀 검사: 역할·투자관·성향이 목록에 있고, 매니저는 꼭 한 명, 전체 2~6명"""
-    out = []
-    for i, m in enumerate(team[:6]):
-        if m.get("role") not in ROLES or m.get("persona") not in PERSONAS or m.get("temper") not in TEMPERS:
-            raise ValueError(f"{i + 1}번째 팀원의 역할·투자관·성향이 잘못됨")
-        out.append({"id": f"m{i + 1}", "role": m["role"], "persona": m["persona"], "temper": m["temper"]})
-    if sum(1 for m in out if m["role"] == "manager") != 1:
-        raise ValueError("최종 결정자(매니저)는 꼭 한 명이어야 합니다")
-    if len(out) < 2:
-        raise ValueError("팀은 두 명 이상이어야 합니다 (매니저 + 한 명)")
-    return out
+def check_team(team: list) -> list[dict]:
+    from . import ants
+
+    return ants.check_team(team)
+
+
+def team_of(a: dict) -> list[dict]:
+    """계좌 팀을 개미 정보로 풀어서"""
+    from . import ants
+
+    return ants.members(a)
 
 
 def _save() -> None:
@@ -391,7 +400,9 @@ def limits_text(a: dict) -> str:
 
 
 def lessons_text(a: dict, who: str) -> str:
-    ag = (a.get("agents") or {}).get(who) or {}
+    from . import ants
+
+    ag = ants.get(who) or {}
     ls = [x["text"] for x in ag.get("lessons") or []]
     st = ag.get("stats") or {}
     if not ls and not st.get("n"):
@@ -496,18 +507,24 @@ async def decide(a: dict, mkt: str, why: str = "정기") -> dict:
         rec = {"at": _iso(), "market": mkt, "why": why, "view": "", "orders": [], "results": [], "error": ""}
         try:
             ctx = await _context(a, mkt)
-            if a.get("strategy") == "team":
+            team = team_of(a)
+            mgr = next((m for m in team if m["role"] == "manager"), None)
+            if not mgr:
+                raise ValueError("팀에 최종 결정자 개미가 없음")
+            if len(team) > 1:
                 d = await _team(a, mkt, ctx, rec)
             else:
-                text = await ai.ask_system(solo_system(a), ctx + "\n\n위 데이터로 이번 시장의 판단과 주문안을 JSON 으로.")
+                text = await ai.ask_system(solo_system(a, mgr), ctx + "\n\n위 데이터로 이번 시장의 판단과 주문안을 JSON 으로.")
                 d = _parse(text)
+                rec["manager"] = agent_name(mgr)
+                rec["managerId"] = mgr["id"]
             rec["view"] = str(d.get("view") or "")[:400]
             if isinstance(d.get("limits"), dict):
                 ch = set_limits(a, d["limits"], d.get("limitsWhy") or "", rec.get("manager") or "AI")
                 if ch:
                     rec["limits"] = ch
                     rec["limitsWhy"] = str(d.get("limitsWhy") or "")[:300]
-            who = rec.get("managerId") or "solo"
+            who = rec.get("managerId") or ""
             for o in d["orders"][: lim(a)["maxOrdersPerDecision"]]:
                 if not isinstance(o, dict):
                     continue
@@ -540,8 +557,8 @@ def add_call(a: dict, who: str, mkt: str, kind: str, code: str, price: float, na
 
 
 def _sig_of(a: dict, who: str) -> str:
-    m = next((x for x in a.get("team") or [] if x["id"] == who), None)
-    return f"{m['role']}/{m['persona']}/{m['temper']}" if m else "solo"
+    m = next((x for x in team_of(a) if x["id"] == who), None)
+    return f"{m['role']}/{m['persona']}/{m['temper']}" if m else ""
 
 
 INDEX_OF = {"kr": "kospi", "us": "sp500"}
@@ -578,8 +595,11 @@ def _agent_system(a: dict, m: dict, mkt: str) -> str:
     pname, pdesc = PERSONAS[m["persona"]]
     tname, tdesc = TEMPERS[m["temper"]]
     head = (
-        f"너는 '{a['name']}' 가상 투자 계좌(진짜 돈이 아님, 시작 1천만 원)를 굴리는 팀의 {role}다. {rdesc}\n"
+        f"너는 '{m.get('name') or role}'라는 개미다. '{a['name']}' 가상 투자 계좌(진짜 돈이 아님)를 굴리는 팀의 {role}다. {rdesc}\n"
         f"투자관: {pname} — {pdesc}\n성향: {tname} — {tdesc}\n"
+        + (f"말버릇: {m['motto']} (의견에 자연스럽게 묻어나게)\n" if m.get("motto") else "")
+        + (f"[네 투자 철학 (사용자가 정함, 따른다)] {m['philosophy']}\n" if m.get("philosophy") else "")
+        + 
         "근거는 주어진 데이터(가격, 오늘 등락률, 알림·뉴스 제목, 보유 현황, 팀원 의견)만 쓴다. 데이터에 없는 뉴스·실적은 지어내지 않는다. 한국어로 짧게.\n"
         f"이번에 다루는 시장은 {'국내' if mkt == 'kr' else '미국'} 하나뿐이다. 목표는 시장 평균(코스피·S&P500)보다 더 버는 것이다.\n" + limits_text(a)
     )
@@ -592,18 +612,24 @@ def _agent_system(a: dict, m: dict, mkt: str) -> str:
     return head
 
 
-def solo_system(a: dict) -> str:
-    ls = lessons_text(a, "solo")
-    return SYSTEM + "\n\n" + limits_text(a) + ("\n\n" + ls if ls else "")
+def solo_system(a: dict, m: dict) -> str:
+    """팀원이 최종 결정자 혼자일 때: 단독 지시문 + 그 개미의 캐릭터·교훈"""
+    ls = lessons_text(a, m["id"])
+    me = f"\n\n[너] '{m.get('name')}' 개미. 성향 {TEMPERS[m['temper']][0]}, 투자관 {PERSONAS[m['persona']][0]} — {PERSONAS[m['persona']][1]}"
+    if m.get("motto"):
+        me += f"\n말버릇: {m['motto']}"
+    if m.get("philosophy"):
+        me += f"\n[네 투자 철학 (사용자가 정함, 따른다)] {m['philosophy']}"
+    return SYSTEM + me + "\n\n" + limits_text(a) + ("\n\n" + ls if ls else "")
 
 
 def _say(m: dict, d: dict) -> dict:
-    return {"id": m["id"], "role": m["role"], "persona": m["persona"], "temper": m["temper"], "name": agent_name(m), "text": str(d.get("opinion") or "")[:600], "stance": d.get("stance"), "picks": [x for x in (d.get("picks") or []) if isinstance(x, dict)][:3], "block": [str(x).upper() for x in (d.get("block") or [])][:10]}
+    return {"id": m["id"], "ant": m["id"], "color": m.get("color", 0), "role": m["role"], "persona": m["persona"], "temper": m["temper"], "name": agent_name(m), "text": str(d.get("opinion") or "")[:600], "stance": d.get("stance"), "picks": [x for x in (d.get("picks") or []) if isinstance(x, dict)][:3], "block": [str(x).upper() for x in (d.get("block") or [])][:10]}
 
 
 async def _team(a: dict, mkt: str, ctx: str, rec: dict) -> dict:
     """장마다 하루 첫 판단은 팀 전체 토론 (전략가 → 분석가 → 리스크 → 매니저), 그 뒤 매시간은 매니저만 그 토론을 보고 판단"""
-    team = a.get("team") or preset("balanced")
+    team = team_of(a)
     day = _now().strftime("%Y-%m-%d") if mkt == "kr" else market.us_time().strftime("%Y-%m-%d")
     last = (a.setdefault("debate", {}).get(mkt)) or {}
     full = last.get("day") != day
@@ -724,49 +750,47 @@ async def _check_halt(a: dict) -> None:
 
 
 # ---------- 계좌 만들기 · 팀 바꾸기 ----------
-def create(name: str, strategy: str, preset_key: str = "balanced", team: list | None = None, start: float = START) -> dict:
+def create(name: str, team: list, start: float = START) -> dict:
+    """새 가상 계좌. team 은 개미 id 목록"""
     load()
     if len(data["accounts"]) >= 6:
         raise ValueError("가상 계좌는 6개까지입니다")
-    name = (name or "").strip()[:20] or ("가상 팀 (" + PRESET_NAMES.get(preset_key, "") + ")" if strategy == "team" else "가상 하네스 (AI)")
-    if strategy not in ("ai", "team") or (strategy == "team" and preset_key not in PRESETS):
-        raise ValueError("전략이 잘못됨")
-    a = _new_account(_next_id(), name, strategy, (team or preset(preset_key)) if strategy == "team" else [])
+    tm = check_team(team)
+    name = (name or "").strip()[:20] or f"가상 팀 ({len(tm)}마리)"
+    a = _new_account(_next_id(), name, "team" if len(tm) > 1 else "ai", tm)
     a["start"] = a["cash"] = round(start)
     data["accounts"].append(a)
     _save()
     return a
 
 
-def set_team(a: dict, team: list[dict]) -> None:
+def set_team(a: dict, team: list) -> None:
     a["team"] = check_team(team)
-    a["strategy"] = "team"
+    a["strategy"] = "team" if len(a["team"]) > 1 else "ai"
     a["debate"] = {}  # 팀이 바뀌면 다음 판단에서 새로 토론
     _save()
 
 
 # ---------- 화면 ----------
-def agents_view(a: dict) -> list[dict]:
-    """팀원(또는 단독 AI) 한 명씩: 소개, 성적, 교훈, 판단 기록"""
-    people = [{**m, "name": agent_name(m)} for m in a.get("team") or []] if a.get("strategy") == "team" else [{"id": "solo", "role": "manager", "persona": "neutral", "temper": "mid", "name": "AI 단독 매니저"}]
-    out = []
-    for m in people:
-        sig = _sig_of(a, m["id"])
-        ag = (a.get("agents") or {}).get(m["id"]) or {}
-        if ag.get("sig") != sig:
-            ag = {}  # 바뀐 팀원은 성적·교훈을 새로 시작
-        calls = [c for c in a.get("calls") or [] if c["who"] == m["id"] and c.get("sig") == sig][-80:][::-1]
-        says = []
-        for d in a["decisions"][::-1]:
+def ant_activity(ant_id: str) -> dict:
+    """개미 한 마리의 판단(채점)과 발언을 모든 계좌에서 모은다"""
+    calls, says = [], []
+    for a in load()["accounts"]:
+        calls += [{**c, "account": a["name"]} for c in a.get("calls") or [] if c["who"] == ant_id]
+        for d in a["decisions"][::-1][:120]:
             for s in d.get("debate") or []:
-                if s["id"] == m["id"] and s.get("persona") == m["persona"] and s.get("role") == m["role"]:
-                    says.append({"at": d["at"], "market": d["market"], "text": s["text"], "stance": s.get("stance"), "picks": s.get("picks") or [], "block": s.get("block") or []})
-            if m["role"] == "manager" and (d.get("managerId") == m["id"] or m["id"] == "solo") and d.get("view"):
-                says.append({"at": d["at"], "market": d["market"], "text": d["view"], "orders": [f"{'매수' if o.get('side') == 'buy' else '매도'} {o.get('code')}" for o in d["orders"]], "results": d["results"]})
-            if len(says) >= 40:
-                break
-        out.append({**m, "lessons": ag.get("lessons") or [], "log": (ag.get("log") or [])[-30:][::-1], "stats": ag.get("stats") or {}, "reviewedAt": ag.get("reviewedAt", ""), "calls": calls, "says": says})
-    return out
+                if s["id"] == ant_id:
+                    says.append({"at": d["at"], "market": d["market"], "account": a["name"], "text": s["text"], "stance": s.get("stance"), "picks": s.get("picks") or [], "block": s.get("block") or []})
+            if d.get("managerId") == ant_id and d.get("view"):
+                says.append({"at": d["at"], "market": d["market"], "account": a["name"], "text": d["view"], "orders": [f"{'매수' if o.get('side') == 'buy' else '매도'} {o.get('code')}" for o in d["orders"]], "results": d["results"]})
+    calls.sort(key=lambda c: c["at"], reverse=True)
+    says.sort(key=lambda s: s["at"], reverse=True)
+    return {"calls": calls[:80], "says": says[:40]}
+
+
+def agents_view(a: dict) -> list[str]:
+    """이 계좌 팀의 개미 id (자세한 것은 ants 목록에서)"""
+    return [m["id"] for m in team_of(a)]
 
 
 async def summary() -> list[dict]:
@@ -774,9 +798,11 @@ async def summary() -> list[dict]:
     out = []
     for a in load()["accounts"]:
         val = await valuation(a)
-        out.append({"id": a["id"], "name": a["name"], "strategy": a["strategy"], "teamN": len(a.get("team") or []), "enabled": a["enabled"], "halted": a.get("halted", ""), "start": a["start"], "total": val["total"], "cash": val["cash"], "pnl": val["pnl"], "pnlPct": val["pnlPct"], "rows": [{k: r[k] for k in ("asset", "code", "name", "qty", "price", "amt", "pnl", "pnlPct", "weight")} for r in val["rows"]]})
+        out.append({"id": a["id"], "name": a["name"], "strategy": a["strategy"], "teamN": len(a.get("team") or []), "team": [{"id": m["id"], "name": m["name"], "color": m["color"], "role": m["role"], "temper": m["temper"]} for m in team_of(a)], "enabled": a["enabled"], "halted": a.get("halted", ""), "start": a["start"], "total": val["total"], "cash": val["cash"], "pnl": val["pnl"], "pnlPct": val["pnlPct"], "rows": [{k: r[k] for k in ("asset", "code", "name", "qty", "price", "amt", "pnl", "pnlPct", "weight")} for r in val["rows"]]})
     return out
 async def view() -> dict:
+    from . import ants, evolve
+
     out = []
     for a in load()["accounts"]:
         val = await valuation(a)
@@ -786,7 +812,7 @@ async def view() -> dict:
                 "name": a["name"],
                 "kind": a["kind"],
                 "strategy": a["strategy"],
-                "team": [{**m, "name": agent_name(m)} for m in a.get("team") or []],
+                "team": team_of(a),
                 "debate": a.get("debate") or {},
                 "enabled": a["enabled"],
                 "start": a["start"],
@@ -807,8 +833,11 @@ async def view() -> dict:
         "roles": {k: {"name": v[0], "desc": v[1]} for k, v in ROLES.items()},
         "personas": {k: {"name": v[0], "desc": v[1]} for k, v in PERSONAS.items()},
         "tempers": {k: {"name": v[0], "desc": v[1]} for k, v in TEMPERS.items()},
-        "presets": {k: {"name": PRESET_NAMES[k], "team": preset(k)} for k in PRESETS},
+        "colors": ants.COLORS,
     }
-    from . import evolve
-
-    return {"accounts": out, "catalog": catalog, "limits": LIMITS, "hard": HARD, "haltPct": HALT_PCT, "hq": evolve.hq_view(), "sessions": market.sessions(), "ai": ai.configured(), "running": state["running"], "lastError": state["lastError"], "fees": {"kr": FEE_KR, "krTax": TAX_KR, "us": FEE_US}}
+    antlist = []
+    for x in ants.all_():
+        v = ants.view(x)
+        v.update(ant_activity(x["id"]))
+        antlist.append(v)
+    return {"accounts": out, "ants": antlist, "catalog": catalog, "limits": LIMITS, "hard": HARD, "haltPct": HALT_PCT, "hq": evolve.hq_view(), "sessions": market.sessions(), "ai": ai.configured(), "running": state["running"], "lastError": state["lastError"], "fees": {"kr": FEE_KR, "krTax": TAX_KR, "us": FEE_US}}

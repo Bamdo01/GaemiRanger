@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePoll } from './api';
+import AntFace from './AntFace';
 import { changeText, fmt, signed, tone } from './lib';
 
 // 내 자산 화면의 가상 계좌 (2026-11-25 사용자: 가상 계좌도 내 자산에서 보이게).
 // 진짜 돈이 아니므로 총자산 합계에는 넣지 않고 따로 보여 준다. 누르면 하네스의 그 계좌로.
 type PRow = { asset: 'kr' | 'us'; code: string; name: string; qty: number; amt: number; pnl: number; pnlPct: number; weight: number };
-type PAcct = { id: string; name: string; strategy: string; teamN: number; enabled: boolean; halted: string; start: number; total: number; cash: number; pnl: number; pnlPct: number; rows: PRow[] };
+type PAcct = { id: string; name: string; strategy: string; teamN: number; team: { id: string; name: string; color: number; role: string; temper: string }[]; enabled: boolean; halted: string; start: number; total: number; cash: number; pnl: number; pnlPct: number; rows: PRow[] };
 
 export default function PaperCard() {
   const d = usePoll<{ accounts: PAcct[] }>('/api/harness/summary', 30_000, true);
@@ -37,8 +38,13 @@ export default function PaperCard() {
                 <span className="paper-tag">가상</span>
                 <span className="paper-main">
                   <b>{a.name}</b>
+                  <span className="hn-faces" aria-label={`개미 ${a.team.map((m) => m.name).join(', ')}`}>
+                    {a.team.map((m) => (
+                      <AntFace key={m.id} color={m.color} role={m.role} temper={m.temper} size={22} />
+                    ))}
+                  </span>
                   <small className="sub">
-                    {a.strategy === 'team' ? `팀 ${a.teamN}명` : 'AI 단독'} · 보유 {a.rows.length} · 현금 {((a.cash / (a.total || 1)) * 100).toFixed(0)}%{a.halted ? ' · 정지됨' : !a.enabled ? ' · 꺼짐' : ''}
+                    개미 {a.teamN}마리 · 보유 {a.rows.length} · 현금 {((a.cash / (a.total || 1)) * 100).toFixed(0)}%{a.halted ? ' · 정지됨' : !a.enabled ? ' · 꺼짐' : ''}
                   </small>
                 </span>
                 <span className="paper-right">
